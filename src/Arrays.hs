@@ -20,7 +20,7 @@ ifThenElse True a _ = a
 ifThenElse False _ b = b
 
 dot :: [Int] -> [Int] -> Int
-dot [a,b,c] [x,y,z] = a * x + b * y + c * z 
+dot [a,b,c] [x,y,z] = a * x + b * y + c * z
 
 when :: (IMonad m) => Bool -> m i i () -> m i i ()
 when False _ = return ()
@@ -67,7 +67,7 @@ runArraysH
   :: IProg Array Thread p q a
   -> IO [TMVar ()]
 runArraysH (Pure a) = P.return []
-runArraysH (Impure (Malloc i (a :: b)) c) 
+runArraysH (Impure (Malloc i (a :: b)) c)
   = let upper = i - 1 in
     let bounds = (0, upper) in
     (IO.newArray bounds a :: IO (IO.IOArray Int b)) P.>>=
@@ -86,7 +86,7 @@ runArraysH (Impure (Write n i (a :: b)) c)
     let offset = i + lower in
     if offset > upper || offset < lower
       then error "Index out of bounds"
-      else 
+      else
         (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a) P.>>=
         (\v -> v `seq` runArraysH (c ()))
 runArraysH (Impure (Length n) c)
@@ -203,7 +203,7 @@ quicksort arr = do
   else afinish do
     i <- partition len arr
     (i1, i2) <- slice arr (max (i - 1) 0)
-    afork do 
+    afork do
       quicksort i1
     quicksort i2
     return ()
@@ -213,10 +213,10 @@ serialConvolve before after inputs weights = do
       foldM [0..(len - 1)] before $ \i prevEl -> do
         let j = i + 1
         currEl <- read inputs i
-        nextEl <- if j == len 
+        nextEl <- if j == len
           then return after
           else read inputs j
-        let sum = [prevEl, currEl, nextEl] `dot` weights 
+        let sum = [prevEl, currEl, nextEl] `dot` weights
         write inputs i sum
         return currEl
       return ()
@@ -233,7 +233,7 @@ parallelConvolve before after inputs weights = do
     middle1 <- read inputs middle
     middle2 <- read inputs (middle + 1)
     (i1, i2) <- slice inputs middle
-    afork do 
+    afork do
       parallelConvolve before middle2 i1 weights
     parallelConvolve middle1 after i2 weights
     return ()
@@ -257,7 +257,7 @@ fft input output (start, gap, len) = do
     let offset = len `div` 2
     afinish do
       (output1, output2) <- slice output (offset - 1)
-      afork do 
+      afork do
         fft input output1 (start, gap * 2, offset)
       fft input output2 (start + gap, gap * 2, offset)
     forM_ [0..(offset - 1)] $ \j1 -> do

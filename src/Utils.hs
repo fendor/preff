@@ -1,10 +1,23 @@
-{-# LANGUAGE DataKinds, TypeOperators, ConstraintKinds, FlexibleContexts, UndecidableInstances, ScopedTypeVariables, FunctionalDependencies, FlexibleInstances, MultiParamTypeClasses, InstanceSigs, PolyKinds, TypeFamilies, StandaloneKindSignatures, GADTs #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Utils where
 
-import Prelude hiding (Monad(..))
-import GHC.TypeLits (TypeError, ErrorMessage(..))
-import Data.Kind (Type, Constraint)
+import Data.Kind (Constraint, Type)
+import GHC.TypeLits (ErrorMessage (..), TypeError)
+import Prelude hiding (Monad (..))
 
 data Nat = Z | S Nat
 
@@ -32,7 +45,7 @@ type family Length a where
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
   Impure :: f p q a -> (a -> IProg f g q r b) -> IProg f g p r b
-  Scope ::  g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
+  Scope :: g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
 
 type (≠) :: forall a. a -> a -> Bool
 type family (≠) a b where
@@ -46,8 +59,8 @@ type Scope a = a -> a -> a -> a -> Type -> Type -> Type
 
 type IMonad :: (p -> p -> Type -> Type) -> Constraint
 class IMonad m where
-  return  ::  a -> m i i a
-  (>>=)   ::  m i j a -> (a -> m j k b) ->  m i k b
+  return :: a -> m i i a
+  (>>=) :: m i j a -> (a -> m j k b) -> m i k b
   (>>) :: m i j a -> m j k b -> m i k b
   g >> f = g >>= const f
 
@@ -94,18 +107,19 @@ instance Acceptable N N N
 type AcceptableList :: [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> Constraint
 class AcceptableList as bs cs
 instance AcceptableList '[] '[] '[]
-instance (Acceptable a b c, AcceptableList as bs cs) => AcceptableList (a ':as) (b ': bs) (c ': cs)
+instance (Acceptable a b c, AcceptableList as bs cs) => AcceptableList (a ': as) (b ': bs) (c ': cs)
 
 data StateF p q x where
-  Alloc :: t ->  StateF p (Append p X) (Token t (Length p))
-  Get 
-    ::  (R ≤ (Lookup p n)) 
-    =>  Token t n 
-    ->  StateF p p t
-  Put
-    ::  (X ≤ (Lookup p n))
-    =>  Token t n -> t
-    ->  StateF p p ()
+  Alloc :: t -> StateF p (Append p X) (Token t (Length p))
+  Get ::
+    (R ≤ (Lookup p n)) =>
+    Token t n ->
+    StateF p p t
+  Put ::
+    (X ≤ (Lookup p n)) =>
+    Token t n ->
+    t ->
+    StateF p p ()
 
 data StateG p p' q' q x x' where
   Fork :: (AcceptableList p1 q1 p2) => StateG p1 p2 q2 q1 a (Future a)
@@ -132,50 +146,52 @@ instance N ≤ N
 instance TypeError Msg => X ≤ N
 
 data ValueType where
-  Actual  ::  ValueType
-  Slice   ::  Nat -> ValueType
+  Actual :: ValueType
+  Slice :: Nat -> ValueType
 
 --newtype AToken t v n = AToken ()
 data AToken t v n where
   AToken :: a -> AToken t v n
 
 data Array p q x where
-  Split 
-    ::  (X ≤ Lookup p n, k ~ Length p) 
-    =>  AToken t v n
-    ->  Int
-    ->  Array p (Append (Append (Replace p n N) X) X)
-          (AToken t (Slice n) k, AToken t (Slice n) (S k))
-  Join 
-    ::  (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) 
-    =>  AToken t (Slice k) n1
-    ->  AToken t (Slice k) n2
-    ->  Array p (Replace (Replace (Replace p n1 N) n2 N) k X) ()
-  Malloc 
-    :: Int
-    -> t
-    -> Array p (Append p X) (AToken t Actual (Length p))
-  Write 
-    :: (X ≤ Lookup p n) 
-    => AToken t v n 
-    -> Int
-    -> t
-    -> Array p p ()
-  Read 
-    :: (R ≤ Lookup p n)
-    => AToken t v n
-    -> Int 
-    -> Array p p t
-  Length 
-    :: (R ≤ Lookup p n) 
-    => AToken t v n 
-    -> Array p p Int
-  Wait
-    :: Future a
-    -> Array p p a
-  InjectIO
-    :: IO a
-    -> Array p p a
+  Split ::
+    (X ≤ Lookup p n, k ~ Length p) =>
+    AToken t v n ->
+    Int ->
+    Array
+      p
+      (Append (Append (Replace p n N) X) X)
+      (AToken t (Slice n) k, AToken t (Slice n) (S k))
+  Join ::
+    (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
+    AToken t (Slice k) n1 ->
+    AToken t (Slice k) n2 ->
+    Array p (Replace (Replace (Replace p n1 N) n2 N) k X) ()
+  Malloc ::
+    Int ->
+    t ->
+    Array p (Append p X) (AToken t Actual (Length p))
+  Write ::
+    (X ≤ Lookup p n) =>
+    AToken t v n ->
+    Int ->
+    t ->
+    Array p p ()
+  Read ::
+    (R ≤ Lookup p n) =>
+    AToken t v n ->
+    Int ->
+    Array p p t
+  Length ::
+    (R ≤ Lookup p n) =>
+    AToken t v n ->
+    Array p p Int
+  Wait ::
+    Future a ->
+    Array p p a
+  InjectIO ::
+    IO a ->
+    Array p p a
 
 data Thread p p' q' q x x' where
   AFork :: (AcceptableList p1 q1 p2) => Thread p1 p2 q2 q1 a (Future a)
