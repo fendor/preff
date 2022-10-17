@@ -60,7 +60,7 @@ library
 
   build-depends:
     , array
-    , base                  ^>=4.14.3.0
+    , base                 >=4.14.3.0
     , containers
     , ghc
     , ghc-prim
@@ -79,7 +79,7 @@ executable safe-mutation
   import:           warnings
   main-is:          Main.hs
   build-depends:
-    , base           ^>=4.14.3.0
+    , base
     , safe-mutation
     , safe-mutation-plugin
 
