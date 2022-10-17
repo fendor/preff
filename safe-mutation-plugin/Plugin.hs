@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Plugin (plugin) where
 
@@ -15,15 +16,14 @@ import Data.Tuple (swap)
 import Prelude hiding ((<>))
 import qualified Prelude
 
-import BasicTypes (Boxity (..))
 import Class (Class)
 import Coercion (Role (..), mkUnivCo)
-import Constraint (Ct (..), CtLoc, Xi, ctEvidence, ctLoc, ctLocSpan, ctPred, mkNonCanonical, setCtLoc, setCtLocSpan)
+import Constraint (Ct (..), ctLoc, ctLocSpan, ctPred, mkNonCanonical, setCtLoc)
 import CoreSyn (Expr (Cast))
 import qualified CoreSyn as C
 import DataCon (DataCon, dataConWorkId, promoteDataCon)
 import Finder (FindResult (..), findPluginModule)
-import Literal (Literal (LitChar, LitRubbish), absentLiteralOf)
+import Literal (Literal (LitChar))
 import Module (Module, mkModuleName)
 import OccName (mkDataOcc, mkTcOcc)
 import Outputable (Outputable, brackets, comma, empty, interpp'SP, interppSP, parens, ppr, showSDocUnsafe, space, text, (<>))
@@ -31,13 +31,13 @@ import Panic (panicDoc)
 import Plugins (Plugin (..), defaultPlugin)
 import Predicate (EqRel (..), Pred (..), classifyPredType, mkClassPred, mkPrimEqPred)
 import RepType (typePrimRep)
-import TcEvidence (EvTerm (..), evCoercion)
-import TcPluginM (TcPluginM, getTopEnv, lookupOrig, newFlexiTyVar, newWanted, tcLookupClass, tcLookupDataCon, tcLookupId, tcLookupTyCon, tcPluginIO)
+import TcEvidence (EvTerm (..))
+import TcPluginM (TcPluginM, getTopEnv, lookupOrig, newWanted, tcLookupClass, tcLookupDataCon, tcLookupId, tcLookupTyCon, tcPluginIO)
 import TcRnTypes (TcPlugin (..), TcPluginResult (..))
 import TyCoRep (Coercion (Refl), Type (..), UnivCoProvenance (..))
 import TyCon (TyCon, isPromotedDataCon)
-import Type (eqType, mkTyConApp, nonDetCmpTc, nonDetCmpType)
-import TysWiredIn (boolTy, charDataCon, charTy, listTyCon, promotedConsDataCon, promotedNilDataCon, promotedTrueDataCon, promotedTupleDataCon)
+import Type (eqType, nonDetCmpTc, nonDetCmpType)
+import TysWiredIn (boolTy, charDataCon, charTy, promotedConsDataCon, promotedNilDataCon, promotedTrueDataCon)
 import Var (Id, Var)
 import VarSet (VarSet, disjointVarSet, elemVarSet, emptyVarSet, mapUnionVarSet, mkVarSet, pprVarSet, unionVarSet, unionVarSets, unitVarSet)
 
