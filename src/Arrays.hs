@@ -8,13 +8,14 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneKindSignatures #-}
+
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -fplugin=Plugin #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use foldM_" #-}
+{-# HLINT ignore "Use void" #-}
 
 module Arrays where
 
@@ -39,7 +40,7 @@ dot _ _ = error "dot"
 
 when :: (IMonad m) => Bool -> m i i () -> m i i ()
 when False _ = return ()
-when True a = a `seq` a
+when True a = a
 
 foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
 foldM [] c _f = return c
@@ -79,7 +80,7 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 runArrays ::
   IProg Array Thread '[] q a ->
   IO ()
-runArrays prog = (runArraysH prog) P.>> (P.return ())
+runArrays prog = runArraysH prog P.>> P.return ()
 
 runArraysH ::
   IProg Array Thread p q a ->
@@ -99,7 +100,7 @@ runArraysH (Impure (Read n i) c) =
        in if offset > upper || offset < lower
             then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
             else
-              (IO.readArray (arr :: IO.IOArray Int Any) offset)
+              IO.readArray (arr :: IO.IOArray Int Any) offset
                 P.>>= (\v -> v `seq` runArraysH (c (unsafeCoerce v)))
 runArraysH (Impure (Write n i (a :: b)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
@@ -177,13 +178,13 @@ example20 = runArrays $ do
     write arr i j
   forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
   injectIO (putStrLn "convolving...")
   parallelConvolve 0 0 arr [1, 2, 3]
   injectIO (putStrLn "end convolving...")
   forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
 
 type CDouble = Complex Double
 type Info = (Int, Int, Int) -- Start, Gap, Len
@@ -203,13 +204,13 @@ example21 = runArrays $ do
     write arr i (toDouble j :+ 0)
   forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
   injectIO (putStrLn "ffting...")
   fft arr output (0, 1, 8)
   injectIO (putStrLn "end ffting...")
   forM_ [0 .. (len - 1)] $ \i -> do
     j <- read output i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
 
 quicksort ::
   (X ≤ Lookup p n) =>
@@ -275,7 +276,7 @@ parallelConvolve before after inputs weights = do
       return ()
 
 realToComplex :: (Integral a) => a -> Complex Double
-realToComplex a = (toDouble a) :+ 0
+realToComplex a = toDouble a :+ 0
 
 imagToComplex :: Double -> Complex Double
 imagToComplex a = 0 :+ a
