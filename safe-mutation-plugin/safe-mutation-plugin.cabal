@@ -25,13 +25,12 @@ library
   -- other-extensions:
   build-depends:
     , array
-    , base                  >=4.14.3.0
+    , base        >=4.14.3.0
     , containers
     , ghc
     , ghc-prim
     , random
     , stm
-
 
   hs-source-dirs:   .
   default-language: Haskell2010
