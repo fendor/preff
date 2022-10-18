@@ -13,43 +13,46 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -fplugin=Plugin #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use foldM_" #-}
 
 module Arrays where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, putTMVar, takeTMVar)
 import Control.Monad.STM (atomically)
 import qualified Data.Array.IO as IO
 import Data.Complex
-import Data.Kind (Constraint, Type)
 import GHC.Types (Any)
 import System.Random
 import Unsafe.Coerce (unsafeCoerce)
 import Utils
-import Prelude hiding (Monad (..), fold, length, read)
+import Prelude hiding (Monad (..), length, read)
 import qualified Prelude as P
 
+ifThenElse :: Bool -> p -> p -> p
 ifThenElse True a _ = a
 ifThenElse False _ b = b
 
 dot :: [Int] -> [Int] -> Int
 dot [a, b, c] [x, y, z] = a * x + b * y + c * z
+dot _ _ = error "dot"
 
 when :: (IMonad m) => Bool -> m i i () -> m i i ()
 when False _ = return ()
 when True a = a `seq` a
 
 foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
+foldM [] c _f = return c
 foldM [x] c f =
   f x c
 foldM (x : xs) c f =
   f x c >>= \c' -> foldM xs c' f
 
-partition :: (_) => Int -> AToken t v n -> IProg Array Thread c c Int
+partition :: (Ord t, 'R ≤ Lookup c n, 'X ≤ Lookup c n) => Int -> AToken t v n -> IProg Array Thread c c Int
 partition len arr = do
-  let last = len - 1 -- c
-  pivot <- read arr last
-  i <- foldM [0 .. (last - 1)] 0 \j i -> do
+  let lastIndex = len - 1 -- c
+  pivot <- read arr lastIndex
+  i <- foldM [0 .. (lastIndex - 1)] 0 \j i -> do
     j_value <- read arr j
     if j_value < pivot
       then do
@@ -60,7 +63,7 @@ partition len arr = do
       else return i
   i_value <- read arr i
   write arr i pivot
-  write arr last i_value -- c
+  write arr lastIndex i_value -- c
   return i
 
 type Bounds = (Int, Int)
@@ -68,7 +71,9 @@ unsafeCreate :: forall a t v n. a -> AToken t v n
 unsafeCreate = AToken
 unsafeUncover :: forall a t v n. AToken t v n -> a
 unsafeUncover (AToken a) = unsafeCoerce a
+unsafeCreateA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). (Bounds, IO.IOArray Int Any) -> AToken t v n
 unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
+unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 runArrays ::
@@ -79,7 +84,7 @@ runArrays prog = (runArraysH prog) P.>> (P.return ())
 runArraysH ::
   IProg Array Thread p q a ->
   IO [TMVar ()]
-runArraysH (Pure a) = P.return []
+runArraysH (Pure _a) = P.return []
 runArraysH (Impure (Malloc i (a :: b)) c) =
   let upper = i - 1
    in let bounds = (0, upper)
@@ -102,14 +107,14 @@ runArraysH (Impure (Write n i (a :: b)) c) =
        in if offset > upper || offset < lower
             then error "Index out of bounds"
             else
-              (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a)
+              IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
                 P.>>= (\v -> v `seq` runArraysH (c ()))
 runArraysH (Impure (Length n) c) =
-  let ((lower, upper), arr) = unsafeUncoverA n
+  let ((lower, upper), _arr) = unsafeUncoverA n
    in if upper - lower + 1 < 0
         then error "Should not be here"
         else runArraysH (c (upper - lower + 1))
-runArraysH (Impure (Join a b) c) =
+runArraysH (Impure (Join _a _b) c) =
   runArraysH (c ())
 runArraysH (Impure (Split n i) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
@@ -125,11 +130,10 @@ runArraysH (Impure (InjectIO a) c) =
 runArraysH (Scope AFork c a) =
   newEmptyTMVarIO
     P.>>= ( \var {-forkIO ( -} ->
-              (runArraysH c)
+              runArraysH c
                 P.>>= (atomically . mapM_ takeTMVar)
-                  P.>> ( atomically (putTMVar var () {-)-})
-                       )
-                  P.>> (runArraysH (a Future))
+                  P.>> atomically (putTMVar var () {-)-})
+                  P.>> runArraysH (a Future)
                 P.>>= (\result -> P.return (var : result))
           )
 runArraysH (Scope AFinish c a) =
@@ -137,46 +141,47 @@ runArraysH (Scope AFinish c a) =
 runArraysH _ = undefined
 
 forM_ :: (IMonad m) => [a] -> (a -> m i i ()) -> m i i ()
+forM_ [] _ = return ()
 forM_ [x] f =
   f x
 forM_ (x : xs) f =
-  f x >>= \c -> forM_ xs f
+  f x >>= \_c -> forM_ xs f
 
 example6 :: IO ()
 example6 = runArrays $ do
-  let length = 10
+  let len = 10
   injectIO (putStrLn "Hello")
-  arr <- malloc length 0
+  arr <- malloc len 0
   write arr 0 10
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- injectIO (getStdRandom (randomR @Int (1, 100000)))
     write arr i j
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
   injectIO (putStrLn "sorting...")
   quicksort arr
   injectIO (putStrLn "end sorting...")
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
-    injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
+    injectIO (putStrLn $ show i ++ ": " ++ show j)
 
 example20 :: IO ()
 example20 = runArrays $ do
-  let length = 20
+  let len = 20
   injectIO (putStrLn "Hello")
-  arr <- malloc length 0
+  arr <- malloc len 0
   write arr 0 10
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- injectIO (getStdRandom (randomR @Int (1, 5)))
     write arr i j
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
     injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
   injectIO (putStrLn "convolving...")
   parallelConvolve 0 0 arr [1, 2, 3]
   injectIO (putStrLn "end convolving...")
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
     injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
 
@@ -188,21 +193,21 @@ toDouble = fromIntegral
 
 example21 :: IO ()
 example21 = runArrays $ do
-  let length = 8
+  let len = 8
   injectIO (putStrLn "Hello")
-  arr <- malloc length 0
-  output <- malloc length 0
+  arr <- malloc len 0
+  output <- malloc len 0
   write arr 0 10
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- injectIO (getStdRandom (randomR @Int (1, 5)))
     write arr i (toDouble j :+ 0)
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read arr i
     injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
   injectIO (putStrLn "ffting...")
   fft arr output (0, 1, 8)
   injectIO (putStrLn "end ffting...")
-  forM_ [0 .. (length - 1)] $ \i -> do
+  forM_ [0 .. (len - 1)] $ \i -> do
     j <- read output i
     injectIO (putStrLn $ (show i) ++ ": " ++ (show j))
 
@@ -223,22 +228,27 @@ quicksort arr = do
     else afinish do
       i <- partition len arr
       (i1, i2) <- slice arr (max (i - 1) 0)
-      afork do
+      _ <- afork do
         quicksort i1
       quicksort i2
       return ()
 
+serialConvolve ::
+  forall k1 (k2 :: [AccessLevel]) (n :: Nat) (v :: k1)
+       (g :: [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> * -> * -> *).
+  ('R ≤ Lookup k2 n, 'X ≤ Lookup k2 n) =>
+  Int -> Int -> AToken Int v n -> [Int] -> IProg Array g k2 k2 ()
 serialConvolve before after inputs weights = do
   len <- length inputs
-  foldM [0 .. (len - 1)] before $ \i prevEl -> do
+  _ <- foldM [0 .. (len - 1)] before $ \i prevEl -> do
     let j = i + 1
     currEl <- read inputs i
     nextEl <-
       if j == len
         then return after
         else read inputs j
-    let sum = [prevEl, currEl, nextEl] `dot` weights
-    write inputs i sum
+    let sumRes = [prevEl, currEl, nextEl] `dot` weights
+    write inputs i sumRes
     return currEl
   return ()
 
@@ -259,7 +269,7 @@ parallelConvolve before after inputs weights = do
       middle1 <- read inputs middle
       middle2 <- read inputs (middle + 1)
       (i1, i2) <- slice inputs middle
-      afork do
+      _ <- afork do
         parallelConvolve before middle2 i1 weights
       parallelConvolve middle1 after i2 weights
       return ()
@@ -285,15 +295,14 @@ fft input output (start, gap, len) = do
       let offset = len `div` 2
       afinish do
         (output1, output2) <- slice output (offset - 1)
-        afork do
+        _ <- afork do
           fft input output1 (start, gap * 2, offset)
         fft input output2 (start + gap, gap * 2, offset)
       forM_ [0 .. (offset - 1)] $ \j1 -> do
         let j2 = j1 + offset
         x1 <- read output j1
         x2 <- read output j2
-        let factor1 = exp $ (- (imagToComplex 2) * pi * (realToComplex j1)) / (realToComplex len)
-        let factor2 = exp $ (- (imagToComplex 2) * pi * (realToComplex j2)) / (realToComplex len)
+        let factor1 = exp $ (- imagToComplex 2 * pi * realToComplex j1) / realToComplex len
+        let factor2 = exp $ (- imagToComplex 2 * pi * realToComplex j2) / realToComplex len
         write output j1 (x1 + factor1 * x2)
         write output j2 (x1 + factor2 * x2)
-      return ()

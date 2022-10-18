@@ -16,8 +16,6 @@
 
 module Store where
 
-import Data.Kind (Constraint, Type)
-import GHC.TypeLits (ErrorMessage (..), TypeError)
 import Utils
 import Prelude hiding (Monad (..), (=<<))
 
@@ -34,9 +32,10 @@ task1, task2 :: Task
 task1 = undefined
 task2 = undefined
 
-(=<<) :: (_) => _
+(=<<) :: (IMonad m) => ((a -> m j k b) -> m i j a -> m i k b)
 (=<<) = flip (>>=)
 
+lazyInit :: ('R ≤ Lookup j n, 'X ≤ Lookup j n) => Token (Maybe Machine) n -> IProg StateF g j j Machine
 lazyInit cache = do
   get cache >>= \case
     Just machine -> do
@@ -47,20 +46,25 @@ lazyInit cache = do
       put cache (Just machine)
       return machine
 
+runMultipleTasks :: IProg StateF StateG i k ()
 runMultipleTasks = do
   cache <- alloc Nothing
-  fork (run task1 =<< lazyInit cache)
-  --fork (run task2 =<< lazyInit cache)
+  _ <- fork (run task1 =<< lazyInit cache)
+  -- fork (run task2 =<< lazyInit cache)
   return ()
 
+pounds :: Int -> Int
 pounds = id
 
+transfer :: (Num a, 'R ≤ Lookup k n1, 'R ≤ Lookup k n2, 'X ≤ Lookup k n1,
+ 'X ≤ Lookup k n2) => Token a n1 -> Token a n2 -> a -> IProg StateF g k k ()
 transfer sender recipient amount = do
   v_sender <- get sender
   v_recipient <- get recipient
   put sender (v_sender - amount)
   put recipient (v_recipient + amount)
 
+racyBank :: IProg StateF StateG i k (Future ())
 racyBank = do
   alice <- alloc (pounds 10)
   bob <- alloc (pounds 10)
@@ -68,11 +72,12 @@ racyBank = do
 
 --fork (transfer alice bob (pounds 5))
 
+test :: IProg StateF StateG i k ()
 test = do
   a <- alloc False
   put a True
-  get a
-  fork $ do
+  _ <- get a
+  _ <- fork $ do
     put a False
     return ()
   return ()
