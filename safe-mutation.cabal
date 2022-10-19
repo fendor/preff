@@ -57,6 +57,7 @@ library
     Arrays
     Store
     Utils
+    Simple.State
 
   build-depends:
     , array
