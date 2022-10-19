@@ -10,9 +10,3 @@ main = do
     -- Arrays.example20
     Arrays.example6
     -- Arrays.example21
-
--- stateExample :: IProg (StateS Int) State'G () () String
--- stateExample = do
---     i <- getS @Int
---     putS (i+i)
---     Utils.return $ show i

@@ -18,6 +18,7 @@ module Store where
 
 import Utils
 import Prelude hiding (Monad (..), (=<<))
+import Parameterised.State
 
 newtype Task = Task ()
 newtype Machine = Machine ()

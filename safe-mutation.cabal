@@ -58,6 +58,8 @@ library
     Store
     Utils
     Simple.State
+    Parameterised.Array
+    Parameterised.State
 
   build-depends:
     , array

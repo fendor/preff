@@ -29,6 +29,8 @@ import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), length, read)
 import qualified Prelude as P
+import Parameterised.Array
+import Parameterised.State
 
 ifThenElse :: Bool -> p -> p -> p
 ifThenElse True a _ = a
