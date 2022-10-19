@@ -11,7 +11,7 @@ data StateS s p q x where
   PutS :: s -> StateS s p q ()
   GetS :: StateS s p q s
 
-data StateG s p p' q' q x x' where
+data StateG s p p' q' q x' x where
   LocalG :: (s -> s) -> StateG s p p' q' q x x
 
 getS :: IProg (StateS s) g p q s
@@ -20,8 +20,8 @@ getS = Impure GetS return
 putS :: s -> IProg (StateS s) g p q ()
 putS s = Impure (PutS s) return
 
-localS :: (s -> s) -> IProg f (StateG s) q r a -> IProg f (StateG s) p r a
-localS f prog = Scope (LocalG f) prog return
+localG :: (s -> s) -> IProg f (StateG s) q r a -> IProg f (StateG s) p r a
+localG f prog = Scope (LocalG f) prog return
 
 runState :: s -> IProg (StateS s) (StateG s) p q a -> (s, a)
 runState s (Pure a) = (s, a)
@@ -39,8 +39,8 @@ stateExample = do
 
 stateWithLocal :: IProg (StateS Int) (StateG Int) p q String
 stateWithLocal = do
-  n <- getS
-  x <- localS (+ n) stateExample
+  n <- getS @Int
+  x <- localG (+ n) stateExample
   return $ x ++ ", initial: " ++ show n
 
 ambiguityExample :: IProg (StateS Int) a p q ()

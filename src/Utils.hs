@@ -22,9 +22,12 @@ import Prelude hiding (Monad (..))
 -- Main Effect monad
 -- ------------------------------------------------
 
+type IProg :: forall k.
+  (k -> k -> * -> *)
+  -> (k -> k -> k -> k -> * -> * -> *) -> k -> k -> * -> *
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
-  Impure :: f p q a -> (a -> IProg f g q r b) -> IProg f g p r b
+  Impure :: forall f g p q r a b . f p q a -> (a -> IProg f g q r b) -> IProg f g p r b
   Scope :: g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
 
 instance IMonad (IProg f g) where
@@ -36,6 +39,14 @@ instance IMonad (IProg f g) where
   (Impure o a) >>= f = Impure o $ fmap (>>= f) a
   (Scope g c a) >>= f = Scope g c (fmap (>>= f) a)
 
+-- TODO: can we write this?
+-- fold :: forall f g p q a b. IFunctor f => (f p q a -> b) -> (a -> b) -> (IProg f g p q a -> b)
+-- fold _   gen (Pure x) = gen x
+-- fold alg gen (Impure op k) = alg (imap (fold alg gen) op)
+-- fold alg gen (Scope op prog k) = undefined
+
+
+
 -- ------------------------------------------------
 -- Parametric Effect monad
 -- ------------------------------------------------
@@ -46,6 +57,10 @@ class IMonad m where
   (>>=) :: m i j a -> (a -> m j k b) -> m i k b
   (>>) :: m i j a -> m j k b -> m i k b
   g >> f = g >>= const f
+
+type IFunctor :: (p -> p -> Type -> Type) -> Constraint
+class IFunctor f where
+  imap :: (a -> b) -> f p q a -> f p q b
 
 -- ------------------------------------------------
 -- Effect System utilities

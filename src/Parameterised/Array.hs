@@ -9,10 +9,12 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+
 module Parameterised.Array where
+
+import Parameterised.State (Future (..))
 import Utils
-import Prelude hiding (Monad(..))
-import Parameterised.State (Future(..))
+import Prelude hiding (Monad (..))
 
 data ValueType where
   Actual :: ValueType
@@ -61,7 +63,6 @@ data Array p q x where
   InjectIO ::
     IO a ->
     Array p p a
-
 
 data Thread p p' q' q x x' where
   AFork :: (AcceptableList p1 q1 p2) => Thread p1 p2 q2 q1 a (Future a)
