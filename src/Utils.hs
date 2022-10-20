@@ -16,19 +16,43 @@ module Utils where
 
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits (ErrorMessage (..), TypeError)
-import Prelude hiding (Monad (..))
+import Prelude hiding (Monad (..), Applicative(..))
+import Data.WorldPeace (Union)
 
 -- ------------------------------------------------
 -- Main Effect monad
 -- ------------------------------------------------
 
 type IProg :: forall k.
-  (k -> k -> * -> *)
-  -> (k -> k -> k -> k -> * -> * -> *) -> k -> k -> * -> *
+  (k -> k -> Type -> Type)
+  -> (k -> k -> k -> k -> Type -> Type -> Type) -> k -> k -> Type -> Type
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
-  Impure :: forall f g p q r a b . f p q a -> (a -> IProg f g q r b) -> IProg f g p r b
+  Impure :: f p q x -> (x -> IProg f g q r a) -> IProg f g p r a
   Scope :: g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
+
+-- data ISem f g p q a where
+--   Val :: a -> IProg f g p p a
+--   Op :: OpenUnion x -> (x -> IProg f g q r a) -> IProg f g p r a
+
+instance Functor (IProg f g p q) where
+  fmap f (Pure a) = Pure $ f a
+  fmap f (Impure op k) = Impure op (fmap (fmap f) k)
+  fmap f (Scope op prog k) = Scope op prog (fmap (fmap f) k)
+
+instance IFunctor (IProg f g) where
+  imap f (Pure a) = Pure $ f a
+  imap f (Impure op k) = Impure op (fmap (imap f) k)
+  imap f (Scope op prog k) = Scope op prog (fmap (imap f) k)
+
+instance IApplicative (IProg f g) where
+  pure = Pure
+
+  -- (<*>) :: forall k (f :: k -> k -> * -> *) (g :: k -> k -> k -> k -> * -> * -> *) (i :: k) (j :: k) a b.
+  --     IProg f g i j (a -> b) -> IProg f g i j a -> IProg f g q r b
+  (Pure f) <*> k = fmap f k
+  (Impure fop k') <*> k = Impure fop (fmap (<*> k) k')
+  Scope fop prog k' <*> k = Scope fop prog (fmap (<*> k) k')
 
 instance IMonad (IProg f g) where
   return :: a -> IProg f g i i a
@@ -46,6 +70,15 @@ instance IMonad (IProg f g) where
 -- fold alg gen (Scope op prog k) = undefined
 
 
+-- type (:+:) :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> Type -> (k -> k -> Type -> Type)
+data (:+:) f g s t a where
+  Inl :: f p q a -> (f :+: g) p q a
+  Inr :: g x y a -> (f :+: g) x y a
+
+newtype IIdentity p q a = IIdentity a
+
+runIdentity :: IIdentity p q a -> a
+runIdentity (IIdentity a) = a
 
 -- ------------------------------------------------
 -- Parametric Effect monad
@@ -61,6 +94,10 @@ class IMonad m where
 type IFunctor :: (p -> p -> Type -> Type) -> Constraint
 class IFunctor f where
   imap :: (a -> b) -> f p q a -> f p q b
+
+class IFunctor f => IApplicative f where
+  pure :: a -> f i i a
+  (<*>) :: f i j (a -> b) -> f j r a -> f i r b
 
 -- ------------------------------------------------
 -- Effect System utilities

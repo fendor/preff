@@ -70,6 +70,7 @@ library
     , random
     , safe-mutation-plugin
     , stm
+    , world-peace
 
   -- Directories containing source files.
   hs-source-dirs:   src

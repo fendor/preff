@@ -1,11 +1,15 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds #-}
 
 module Simple.State where
 
 import Utils
 import Prelude hiding (Monad (..))
+import Data.WorldPeace
+import Data.Functor.Identity
 
 data StateS s p q x where
   PutS :: s -> StateS s p q ()
@@ -47,3 +51,17 @@ ambiguityExample :: IProg (StateS Int) a p q ()
 ambiguityExample = do
   _i <- getS
   return ()
+
+typeExperiment :: IProg (StateS Int :+: StateS String :+: IIdentity) k p q String
+typeExperiment = undefined
+
+-- runStateE :: s -> IProg (Union IIdentity (StateS s : effs)) k p q a -> IProg (Union IIdentity effs) k p q (s, a)
+-- runStateE s (Pure a) = return (s, a)
+-- runStateE s (Impure union k) = undefined
+-- runStateE s (Scope op prog k) = undefined
+-- runStateE s (Impure (Inl GetS) k) = runStateE s undefined -- (k s)
+-- runStateE _s (Impure (Inl (PutS s')) k) = Impure undefined res
+--   where
+--     res = \x -> runStateE s' (k x)
+-- runStateE s (Impure (Inr other) k) = Impure other (\x -> runStateE s (k x)) -- (runStateE s (k ()))
+-- runStateE s (Scope _ _ _) = undefined
