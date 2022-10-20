@@ -19,18 +19,11 @@
 
 module Arrays where
 
-import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, putTMVar, takeTMVar)
-import Control.Monad.STM (atomically)
-import qualified Data.Array.IO as IO
 import Data.Complex
-import GHC.Types (Any)
 import System.Random
-import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), length, read)
-import qualified Prelude as P
 import Parameterised.Array
-import Parameterised.State
 
 ifThenElse :: Bool -> p -> p -> p
 ifThenElse True a _ = a
@@ -68,80 +61,6 @@ partition len arr = do
   write arr i pivot
   write arr lastIndex i_value -- c
   return i
-
-type Bounds = (Int, Int)
-unsafeCreate :: forall a t v n. a -> AToken t v n
-unsafeCreate = AToken
-unsafeUncover :: forall a t v n. AToken t v n -> a
-unsafeUncover (AToken a) = unsafeCoerce a
-unsafeCreateA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). (Bounds, IO.IOArray Int Any) -> AToken t v n
-unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
-unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
-unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
-
-runArrays ::
-  IProg Array Thread '[] q a ->
-  IO ()
-runArrays prog = runArraysH prog P.>> P.return ()
-
-runArraysH ::
-  IProg Array Thread p q a ->
-  IO [TMVar ()]
-runArraysH (Pure _a) = P.return []
-runArraysH (Impure (Malloc i (a :: b)) c) =
-  let upper = i - 1
-   in let bounds = (0, upper)
-       in (IO.newArray bounds a :: IO (IO.IOArray Int b))
-            P.>>= ( \arr ->
-                      let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
-                       in runArraysH (c (unsafeCreateA (bounds, arr')))
-                  )
-runArraysH (Impure (Read n i) c) =
-  let ((lower, upper), arr) = unsafeUncoverA n
-   in let offset = i + lower
-       in if offset > upper || offset < lower
-            then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
-            else
-              IO.readArray (arr :: IO.IOArray Int Any) offset
-                P.>>= (\v -> v `seq` runArraysH (c (unsafeCoerce v)))
-runArraysH (Impure (Write n i (a :: b)) c) =
-  let ((lower, upper), arr) = unsafeUncoverA n
-   in let offset = i + lower
-       in if offset > upper || offset < lower
-            then error "Index out of bounds"
-            else
-              IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
-                P.>>= (\v -> v `seq` runArraysH (c ()))
-runArraysH (Impure (Length n) c) =
-  let ((lower, upper), _arr) = unsafeUncoverA n
-   in if upper - lower + 1 < 0
-        then error "Should not be here"
-        else runArraysH (c (upper - lower + 1))
-runArraysH (Impure (Join _a _b) c) =
-  runArraysH (c ())
-runArraysH (Impure (Split n i) c) =
-  let ((lower, upper), arr) = unsafeUncoverA n
-   in let offset = i + lower
-       in if offset > upper || offset < lower
-            then error ("Index out of bounds " ++ show i ++ " " ++ show (lower, upper))
-            else
-              let n1 = (lower, offset)
-               in let n2 = (offset + 1, upper)
-                   in runArraysH (c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
-runArraysH (Impure (InjectIO a) c) =
-  a P.>>= (runArraysH . c)
-runArraysH (Scope AFork c a) =
-  newEmptyTMVarIO
-    P.>>= ( \var {-forkIO ( -} ->
-              runArraysH c
-                P.>>= (atomically . mapM_ takeTMVar)
-                  P.>> atomically (putTMVar var () {-)-})
-                  P.>> runArraysH (a Future)
-                P.>>= (\result -> P.return (var : result))
-          )
-runArraysH (Scope AFinish c a) =
-  runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (a ())
-runArraysH _ = undefined
 
 forM_ :: (IMonad m) => [a] -> (a -> m i i ()) -> m i i ()
 forM_ [] _ = return ()
