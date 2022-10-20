@@ -19,7 +19,7 @@ import GHC.Types (Any)
 import Parameterised.State (Future (..))
 import Unsafe.Coerce (unsafeCoerce)
 import Utils
-import Prelude hiding (Monad (..))
+import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
 
 data ValueType where
@@ -111,6 +111,18 @@ unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
 
 unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
+
+runSerialArrays :: IProg (Op (Array : effs)) k p q a -> IProg (Op effs) k p q a
+runSerialArrays (Pure a) = return a
+runSerialArrays _ = undefined
+
+-- serialExample :: IProg Array any '[] '[X] Integer
+-- serialExample = do
+--   arr <- malloc 5 0
+--   write arr 0 1
+--   val <- read arr 0
+--   return val
+
 
 runArrays ::
   IProg Array Thread '[] q a ->

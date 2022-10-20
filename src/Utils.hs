@@ -15,9 +15,8 @@
 module Utils where
 
 import Data.Kind (Constraint, Type)
-import GHC.TypeLits (ErrorMessage (..), TypeError)
+import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
-import Data.WorldPeace (Union)
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -30,10 +29,6 @@ data IProg f g p q a where
   Pure :: a -> IProg f g p p a
   Impure :: f p q x -> (x -> IProg f g q r a) -> IProg f g p r a
   Scope :: g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
-
--- data ISem f g p q a where
---   Val :: a -> IProg f g p p a
---   Op :: OpenUnion x -> (x -> IProg f g q r a) -> IProg f g p r a
 
 instance Functor (IProg f g p q) where
   fmap f (Pure a) = Pure $ f a
@@ -63,22 +58,22 @@ instance IMonad (IProg f g) where
   (Impure o a) >>= f = Impure o $ fmap (>>= f) a
   (Scope g c a) >>= f = Scope g c (fmap (>>= f) a)
 
--- TODO: can we write this?
--- fold :: forall f g p q a b. IFunctor f => (f p q a -> b) -> (a -> b) -> (IProg f g p q a -> b)
--- fold _   gen (Pure x) = gen x
--- fold alg gen (Impure op k) = alg (imap (fold alg gen) op)
--- fold alg gen (Scope op prog k) = undefined
-
-
--- type (:+:) :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> Type -> (k -> k -> Type -> Type)
-data (:+:) f g s t a where
-  Inl :: f p q a -> (f :+: g) p q a
-  Inr :: g x y a -> (f :+: g) x y a
+data Op :: [k -> k -> Type -> Type] -> k -> k -> Type -> Type where
+  Here :: f p q x -> Op (f : fs) p q x
+  There :: Op fs p q x -> Op (f : fs) p q x
 
 newtype IIdentity p q a = IIdentity a
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
+
+-- type family Find (x :: Symbol -> a) (xs :: [Symbol -> a]) where
+--   Find x (x : xs)
+
+
+run :: IProg (Op '[]) k p p a -> a
+run (Pure a) = a
+run _ = error "Internal hilarious type error"
 
 -- ------------------------------------------------
 -- Parametric Effect monad
