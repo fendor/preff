@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Utils where
 
@@ -58,22 +59,104 @@ instance IMonad (IProg f g) where
   (Impure o a) >>= f = Impure o $ fmap (>>= f) a
   (Scope g c a) >>= f = Scope g c (fmap (>>= f) a)
 
-data Op :: [k -> k -> Type -> Type] -> k -> k -> Type -> Type where
-  Here :: f p q x -> Op (f : fs) p q x
-  There :: Op fs p q x -> Op (f : fs) p q x
+instance IMonad (Sem f) where
+  return :: a -> Sem f i i a
+  return = Value
+
+  (>>=) :: Sem f i j a -> (a -> Sem f j k b) -> Sem f i k b
+  (Value a) >>= f = f a
+  (Op o a) >>= f = Op o (a |> IKleisliTupled f)
+
+type Sem ::
+  (k -> k -> Type -> Type) ->
+  k ->
+  k ->
+  Type ->
+  Type
+data Sem f p q a where
+  Value :: a -> Sem f p p a
+  Op ::
+    f p q x ->
+    IKleisliTupled (Sem f) '(q, x) '(r, a) ->
+    -- x -> Sem f q r a
+    Sem f p r a
+
+-- type Op :: forall k . [k -> k -> Type -> Type] -> Type -> Type -> Type -> Type
+data Op fs p q x where
+  Here :: f s t x -> Op (f : fs) (s, p) (t, q) x
+  There :: Op fs s t x -> Op (f : fs) (p, s) (q, t) x
+
+type family Fst x where
+  Fst '(a, b) = a
+type family Snd x where
+  Snd '(a, b) = b
+
+-- | Wrapper type that can carry additional type state.
+--
+-- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+-- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+--   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
+--             (b :: k3).
+--      a -> m p q b
+--
+-- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
+-- runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
+newtype IKleisliTupled m ia ob = IKleisliTupled
+  { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
+  }
+
+data Free f s1 s2 a where
+  PureF :: a -> Free f s s a
+  ImpureF ::
+    f s1 s2 a ->
+      IKleisliTupled (Free f) '(s2, a) '(s3, b) ->
+        Free f s1 s3 b
+
+(|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
+g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
+
+instance IFunctor (Free f) where
+  imap f (PureF a) = PureF $ f a
+  imap f (ImpureF a g) = ImpureF a (g |> IKleisliTupled (PureF . f))
+
+instance IApplicative (Free f) where
+  pure = PureF
+
+  (PureF f) <*> (PureF a) = return $ f a
+  (PureF f) <*> (ImpureF a g) = ImpureF a (g |> IKleisliTupled (PureF . f))
+  (ImpureF a f) <*> m = ImpureF a (f |> IKleisliTupled (`imap` m))
+
+instance IMonad (Free f) where
+  return = pure
+  (PureF a)     >>= f = f a
+  (ImpureF a g) >>= f = ImpureF a (g |> IKleisliTupled f)
+
+infixr 5 :+:
+type (:+:) ::
+  forall sl sr.
+  (sl -> sl -> Type -> Type) ->
+  (sr -> sr -> Type -> Type) ->
+  (sl, sr) ->
+  (sl, sr) ->
+  Type ->
+  Type
+data (f1 :+: f2) t1 t2 x where
+  Inl :: f1 sl1 sl2 x -> (f1 :+: f2) '(sl1, sr) '(sl2, sr) x
+  Inr :: f2 sr1 sr2 x -> (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
+
+runPure
+  :: (forall j p b. f j p b -> b)
+  -> Free (f :+: fs) '(i, is) '(o, os) a
+  -> Free fs is os a
+runPure _ (PureF a) = PureF a
+runPure f (ImpureF (Inr cmd) q) = ImpureF cmd k
+  where k = IKleisliTupled $ \a -> runPure f $ runIKleisliTupled q a
+runPure f (ImpureF (Inl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
 
 newtype IIdentity p q a = IIdentity a
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
-
--- type family Find (x :: Symbol -> a) (xs :: [Symbol -> a]) where
---   Find x (x : xs)
-
-
-run :: IProg (Op '[]) k p p a -> a
-run (Pure a) = a
-run _ = error "Internal hilarious type error"
 
 -- ------------------------------------------------
 -- Parametric Effect monad

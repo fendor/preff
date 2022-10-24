@@ -10,11 +10,13 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Parameterised.Array where
 
 import Control.Concurrent.STM
 import Data.Array.IO as IO
+import qualified Data.Array as Array
 import GHC.Types (Any)
 import Parameterised.State (Future (..))
 import Unsafe.Coerce (unsafeCoerce)
@@ -112,9 +114,22 @@ unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
 unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
-runSerialArrays :: IProg (Op (Array : effs)) k p q a -> IProg (Op effs) k p q a
-runSerialArrays (Pure a) = return a
-runSerialArrays _ = undefined
+runSerialArrays :: (forall t. Int -> Array.Array Int t) -> Sem (Array :+: effs) '(p,u) '(q, v) a -> Sem effs u v a
+runSerialArrays f (Value a) = return a
+runSerialArrays f (Op (Inr cmd) k) = Op cmd $ IKleisliTupled $ \x -> runSerialArrays f $ runIKleisliTupled k x
+runSerialArrays f (Op (Inl cmd) k) = case cmd of
+  Malloc i (n :: b) ->
+    let (a :: Array.Array Int b) = f i
+    in runSerialArrays f (runIKleisliTupled k (unsafeCreateA undefined))
+  Read i n -> undefined
+  Write i a n -> undefined
+  Length _ -> undefined
+  Join _ _ -> undefined
+  Split _ _ -> undefined
+  Wait _ -> undefined
+  InjectIO _ -> undefined
+
+
 
 -- serialExample :: IProg Array any '[] '[X] Integer
 -- serialExample = do
