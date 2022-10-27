@@ -1,13 +1,4 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE PolyKinds #-}
-
 module Simple.State where
 
 import Utils
@@ -67,23 +58,16 @@ typeExperiment = do
 getNS1 :: Sem (StateS a :+: f2) '(sl, sr) '(sl, sr) a
 getNS1 = Op (Inl GetS) (IKleisliTupled return)
 
-getNS1' :: Sem (StateS a :+: (StateS c :+: IIdentity)) '(sl, '(sl2, sr)) '(sl, '(sl2, sr)) a
-getNS1' = Op (Inl GetS) (IKleisliTupled return)
-
 -- putNS2 :: i -> Sem (s :+: StateS i :+: effs) '(e, '(p, u)) '(e, '(p, u)) ()
 putNS2 :: s -> Sem (f1 :+: (StateS s :+: f2)) '(sl, '(sl2, sr)) '(sl, '(sl2, sr)) ()
 putNS2 i = Op (Inr (Inl $ PutS i)) (IKleisliTupled return)
-
--- putNS2' :: s -> Sem (StateS i :+: StateS s :+: IIdentity) '(sl, '(sl2, sr)) '(sl, '(sl2, sr)) ()
-putNS2' :: s -> Sem (f1 :+: (StateS s :+: f2)) '(sl, '(sl2, sr)) '(sl, '(sl2, sr)) ()
-putNS2' i = Op (Inr $ Inl $ PutS i) (IKleisliTupled return)
 
 simpleState :: Sem (StateS Int :+: IIdentity) '((), ()) '((), ()) Int
 simpleState = return 0
 
 foo = Simple.State.runPure (\case
   GetS -> 5
-  PutS s -> ()) typeExperiment
+  PutS s -> ()) simpleState
 
 -- runExp :: (String, (Int, String))
 runExp = run $ runStateE "test" $ runStateE 10 typeExperiment
