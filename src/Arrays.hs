@@ -11,7 +11,7 @@ import Data.Complex
 import System.Random
 import Utils
 import Prelude hiding (Monad (..), length, read)
-import Parameterised.Array hiding (exp)
+import Parameterised.Array
 
 ifThenElse :: Bool -> p -> p -> p
 ifThenElse True a _ = a

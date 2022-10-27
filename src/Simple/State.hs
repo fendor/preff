@@ -3,7 +3,6 @@ module Simple.State where
 
 import Utils
 import Prelude hiding (Monad (..))
-import PrelNames (nullAddrIdKey)
 
 data StateS s p q x where
   PutS :: s -> StateS s p p ()
@@ -65,11 +64,13 @@ putNS2 i = Op (Inr (Inl $ PutS i)) (IKleisliTupled return)
 simpleState :: Sem (StateS Int :+: IIdentity) '((), ()) '((), ()) Int
 simpleState = return 0
 
-foo = Simple.State.runPure (\case
+foo :: Sem IIdentity () () Int
+foo = runPure (\case
   GetS -> 5
-  PutS s -> ()) simpleState
+  PutS _s -> ()) simpleState
 
 -- runExp :: (String, (Int, String))
+runExp :: ([Char], (Int, [Char]))
 runExp = run $ runStateE "test" $ runStateE 10 typeExperiment
 
 run :: Sem IIdentity p q a -> a
@@ -91,13 +92,3 @@ runStateE _s (Op (Inl (PutS s')) k) = runStateE s' (runIKleisliTupled k ())
 runStateE s (Op (Inr other) k) = Op other $
   IKleisliTupled $
     \x -> runStateE s $ runIKleisliTupled k x
-
-runPure ::
-  (forall p q b. eff p q b -> b) ->
-  Sem (eff :+: effs) '(s, ps) '(t, qs) a ->
-  Sem effs ps qs a
-runPure _ (Value a) = Value a
-runPure f (Op (Inr cmd) q) = Op cmd k
- where
-  k = IKleisliTupled $ \a -> Simple.State.runPure f $ runIKleisliTupled q a
-runPure f (Op (Inl cmd) q) = Simple.State.runPure f $ runIKleisliTupled q (f cmd)

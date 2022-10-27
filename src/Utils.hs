@@ -92,31 +92,9 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
   { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
 
-data Free f s1 s2 a where
-  PureF :: a -> Free f s s a
-  ImpureF ::
-    f s1 s2 a ->
-      IKleisliTupled (Free f) '(s2, a) '(s3, b) ->
-        Free f s1 s3 b
-
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
-instance IFunctor (Free f) where
-  imap f (PureF a) = PureF $ f a
-  imap f (ImpureF a g) = ImpureF a (g |> IKleisliTupled (PureF . f))
-
-instance IApplicative (Free f) where
-  pure = PureF
-
-  (PureF f) <*> (PureF a) = return $ f a
-  (PureF f) <*> (ImpureF a g) = ImpureF a (g |> IKleisliTupled (PureF . f))
-  (ImpureF a f) <*> m = ImpureF a (f |> IKleisliTupled (`imap` m))
-
-instance IMonad (Free f) where
-  return = pure
-  (PureF a)     >>= f = f a
-  (ImpureF a g) >>= f = ImpureF a (g |> IKleisliTupled f)
 
 infixr 5 :+:
 type (:+:) ::
@@ -133,12 +111,12 @@ data (f1 :+: f2) t1 t2 x where
 
 runPure
   :: (forall j p b. f j p b -> b)
-  -> Free (f :+: fs) '(i, is) '(o, os) a
-  -> Free fs is os a
-runPure _ (PureF a) = PureF a
-runPure f (ImpureF (Inr cmd) q) = ImpureF cmd k
+  -> Sem (f :+: fs) '(i, is) '(o, os) a
+  -> Sem fs is os a
+runPure _ (Value a) = Value a
+runPure f (Op (Inr cmd) q) = Op cmd k
   where k = IKleisliTupled $ \a -> runPure f $ runIKleisliTupled q a
-runPure f (ImpureF (Inl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
+runPure f (Op (Inl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
 
 newtype IIdentity p q a = IIdentity a
 
