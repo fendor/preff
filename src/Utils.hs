@@ -5,6 +5,7 @@ module Utils where
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
+import qualified Prelude as P
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -109,6 +110,10 @@ data (f1 :+: f2) t1 t2 x where
   Inl :: f1 sl1 sl2 x -> (f1 :+: f2) '(sl1, sr) '(sl2, sr) x
   Inr :: f2 sr1 sr2 x -> (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
 
+-- ------------------------------------------------
+-- Simple Runners
+-- ------------------------------------------------
+
 runPure
   :: (forall j p b. f j p b -> b)
   -> Sem (f :+: fs) '(i, is) '(o, os) a
@@ -123,6 +128,23 @@ newtype IIdentity p q a = IIdentity a
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
 
+run :: Sem IIdentity p q a -> a
+run (Value a) = a
+run (Op cmd k) = run $ runIKleisliTupled k (runIdentity cmd)
+
+data IIO p q a where
+  RunIO :: IO a -> IIO p p a
+
+runIO :: Sem IIO p q a -> IO a
+runIO (Value a) = P.pure a
+runIO (Op (RunIO io) k) = io P.>>= runIO . runIKleisliTupled k
+
+-- TODO: not general enough
+embedIO :: IO a -> Sem (f :+: IIO) '(p1, q1) '(p1, q1) a
+embedIO act = Op (Inr $ RunIO act) (IKleisliTupled return)
+
+embedIO1 :: IO a -> Sem IIO q q a
+embedIO1 act = Op (RunIO act) (IKleisliTupled return)
 -- ------------------------------------------------
 -- Parametric Effect monad
 -- ------------------------------------------------
@@ -173,6 +195,12 @@ type (≠) :: forall a. a -> a -> Bool
 type family (≠) a b where
   a ≠ a = False
   a ≠ b = True
+
+type Remove :: [a] -> Nat -> [a]
+type family Remove xs n where
+  Remove (x ': xs) Z = xs
+  Remove (x ': xs) (S n) = Remove xs n
+  Remove '[] x = TypeError (Text "Index out of Bounds")
 
 type a ≁ b = (a ≠ b) ~ True
 
@@ -246,3 +274,22 @@ type family Max a b where
   Max R _ = R
   Max _ R = R
   Max _ _ = N
+
+-- ------------------------------------------------
+-- Rebindable Syntax and IMonad Utils
+-- ------------------------------------------------
+
+ifThenElse :: Bool -> p -> p -> p
+ifThenElse True a _ = a
+ifThenElse False _ b = b
+
+when :: (IMonad m) => Bool -> m i i () -> m i i ()
+when False _ = return ()
+when True a = a
+
+foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
+foldM [] c _f = return c
+foldM [x] c f =
+  f x c
+foldM (x : xs) c f =
+  f x c >>= \c' -> foldM xs c' f

@@ -12,6 +12,8 @@ import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
+import Data.Dynamic (Dynamic)
+import Data.Typeable
 
 data ValueType where
   Actual :: ValueType
@@ -34,7 +36,7 @@ data Array p q x where
     (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
     AToken t (Slice k) n1 ->
     AToken t (Slice k) n2 ->
-    Array p (Replace (Replace (Replace p n1 N) n2 N) k X) ()
+    Array p (Remove (Remove (Replace (Replace (Replace p n1 N) n2 N) k X) n2) n1) ()
   Malloc ::
     Int ->
     t ->
@@ -102,23 +104,6 @@ unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
 
 unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
-
-runSerialArrays :: (forall t. Int -> Array.Array Int t) -> Sem (Array :+: effs) '(p,u) '(q, v) a -> Sem effs u v a
-runSerialArrays f (Value a) = return a
-runSerialArrays f (Op (Inr cmd) k) = Op cmd $ IKleisliTupled $ \x -> runSerialArrays f $ runIKleisliTupled k x
-runSerialArrays f (Op (Inl cmd) k) = case cmd of
-  Malloc i (n :: b) ->
-    let (a :: Array.Array Int b) = f i
-    in runSerialArrays f (runIKleisliTupled k (unsafeCreateA undefined))
-  Read i n -> undefined
-  Write i a n -> undefined
-  Length _ -> undefined
-  Join _ _ -> undefined
-  Split _ _ -> undefined
-  Wait _ -> undefined
-  InjectIO _ -> undefined
-
-
 
 -- serialExample :: IProg Array any '[] '[X] Integer
 -- serialExample = do

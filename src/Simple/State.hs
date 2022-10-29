@@ -73,10 +73,6 @@ foo = runPure (\case
 runExp :: ([Char], (Int, [Char]))
 runExp = run $ runStateE "test" $ runStateE 10 typeExperiment
 
-run :: Sem IIdentity p q a -> a
-run (Value a) = a
-run (Op cmd k) = run $ runIKleisliTupled k (runIdentity cmd)
-
 -- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem (StateS s : effs)) '((p, q1), s) '((p, v), a))
 -- runIKleisliTupled (undefined :: IKleisliTupled (Sem (StateS s : effs)) '((p, q1), s) '((p, v), a)) :: s -> Sem (StateS s : effs) (p, q1) (p, v) a
 --
