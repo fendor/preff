@@ -16,30 +16,34 @@ import Data.Tuple (swap)
 import Prelude hiding ((<>))
 import qualified Prelude
 
-import Class (Class)
-import Coercion (Role (..), mkUnivCo)
-import Constraint (Ct (..), ctLoc, ctLocSpan, ctPred, mkNonCanonical, setCtLoc)
-import CoreSyn (Expr (Cast))
-import qualified CoreSyn as C
-import DataCon (DataCon, dataConWorkId, promoteDataCon)
-import Finder (FindResult (..), findPluginModule)
-import Literal (Literal (LitChar))
-import Module (Module, mkModuleName)
-import OccName (mkDataOcc, mkTcOcc)
-import Outputable (Outputable, brackets, comma, empty, interpp'SP, interppSP, parens, ppr, showSDocUnsafe, space, text, (<>))
-import Panic (panicDoc)
-import Plugins (Plugin (..), defaultPlugin)
-import Predicate (EqRel (..), Pred (..), classifyPredType, mkClassPred, mkPrimEqPred)
-import RepType (typePrimRep)
-import TcEvidence (EvTerm (..))
-import TcPluginM (TcPluginM, getTopEnv, lookupOrig, newWanted, tcLookupClass, tcLookupDataCon, tcLookupId, tcLookupTyCon, tcPluginIO)
-import TcRnTypes (TcPlugin (..), TcPluginResult (..))
-import TyCoRep (Coercion (Refl), Type (..), UnivCoProvenance (..))
-import TyCon (TyCon, isPromotedDataCon)
-import Type (eqType, nonDetCmpTc, nonDetCmpType)
-import TysWiredIn (boolTy, charDataCon, charTy, promotedConsDataCon, promotedNilDataCon, promotedTrueDataCon)
-import Var (Id, Var)
-import VarSet (VarSet, disjointVarSet, elemVarSet, emptyVarSet, mapUnionVarSet, mkVarSet, pprVarSet, unionVarSet, unionVarSets, unitVarSet)
+import GHC.Driver.Plugins hiding (TcPlugin)
+import GHC.Core.Predicate
+import GHC.Core.Type
+import GHC.Types.Var.Set
+import GHC.Types.Var
+import GHC.Tc.Types.Constraint
+import GHC.Tc.Types.Evidence
+import GHC.Core.TyCon
+import GHC.Core.DataCon
+import GHC.Core.Class
+import GHC.Utils.Outputable
+import GHC.Tc.Plugin
+import GHC.Tc.Types
+import GHC.Unit.Types
+import GHC.Types.RepType
+import GHC.Core.Coercion
+import GHC.Utils.Panic
+import GHC.Types.Name.Occurrence
+import GHC.Unit.Module.Name
+import GHC.Core.TyCo.Rep
+import GHC.Builtin.Types
+import GHC.Types.Unique.FM
+import qualified GHC.Unit.Finder as Finder
+import GHC.Driver.Env (HscEnv(..))
+import GHC.Unit.Env (ue_units, unsafeGetHomeUnit)
+import qualified GHC.Driver.Config.Finder as Finder
+import qualified GHC.Core as C
+import qualified GHC.Types.Literal as L
 
 keepMaybe :: (a -> Maybe b) -> (a -> Maybe (a, b))
 keepMaybe f a = fmap (a,) $ f a
@@ -146,7 +150,7 @@ instance Outputable OpFun where
   ppr OpTake = text "Take"
   ppr OpDrop = text "Drop"
   ppr OpPower = text "Power"
-  --ppr OpPower = text "Empty"
+  ppr OpEmpty = text "Empty"
   ppr OpSub = text "OpSub"
   ppr OpCons = text "Cons"
   ppr OpNil = text "Nil"
@@ -185,7 +189,11 @@ instance Outputable OpType where
 lookupModule :: String -> TcPluginM Module
 lookupModule name = do
   hsc_env <- getTopEnv
-  found_module <- tcPluginIO $ findPluginModule hsc_env (mkModuleName name)
+  let fc = hsc_FC hsc_env
+      unit_env = hsc_unit_env hsc_env
+      fopts = Finder.initFinderOpts $ hsc_dflags hsc_env
+      unitState = ue_units unit_env
+  found_module <- tcPluginIO $ Finder.findPluginModule fc fopts unitState (Just $ unsafeGetHomeUnit unit_env) (mkModuleName name)
   case found_module of
     Found _ the_module -> return the_module
     _ -> panicDoc "Unable to find the module" (empty)
@@ -203,11 +211,10 @@ lookupClass search_module name =
   tcLookupClass =<< lookupOrig search_module (mkTcOcc name)
 
 convert :: State -> Type -> OpType
-convert s op =
-  case op of
-    TyVarTy v -> OpVar v
-    TyConApp tc args -> OpApp (convertFun s tc) (map (convert s) args)
-    t -> error $ show t -- OpLift t
+convert s op = case op of
+  TyVarTy v -> OpVar v
+  TyConApp tc args -> OpApp (convertFun s tc) (map (convert s) args)
+  t -> error $ show $ OpLift t
 
 convertFun :: State -> TyCon -> OpFun
 convertFun s tc =
@@ -345,8 +352,8 @@ deconvertConstraintSet st (OpConstraintSet cts _) =
 
 turnIntoCt :: State -> (Ct, OpConstraintSet) -> (EvTerm, Ct)
 turnIntoCt st (ct, x)
-  | l2 == 0 = (EvExpr (Cast (C.Coercion (Refl boolTy)) ev2), ct)
-  | l2 == 1 = (EvExpr (Cast (C.App (C.Var (dataConWorkId charDataCon)) (C.Lit (LitChar 'c'))) ev1), ct)
+  | l2 == 0 = (EvExpr (C.Cast (C.Coercion (Refl boolTy)) ev2), ct)
+  | l2 == 1 = (EvExpr (C.Cast (C.App (C.Var (dataConWorkId charDataCon)) (C.Lit (L.LitChar 'c'))) ev1), ct)
   | otherwise = error (show (l1, l2, l3))
  where
   ev1 = mkUnivCo (PluginProv "linearity") Representational (charTy) (ctPred ct)
@@ -358,8 +365,7 @@ turnIntoCt st (ct, x)
 makeIntoCt :: State -> (Ct, OpConstraintSet) -> TcPluginM [Ct]
 makeIntoCt st (ct, x) = do
   let loc = ctLoc ct
-  let span = ctLocSpan loc
-  map (flip setCtLoc loc) <$> map mkNonCanonical <$> mapM (newWanted loc) (deconvertConstraintSet st x)
+  map mkNonCanonical <$> mapM (newWanted loc) (deconvertConstraintSet st x)
 
 hasChanged :: OpConstraintSet -> Bool
 hasChanged (OpConstraintSet _ ch) = ch
@@ -700,8 +706,8 @@ freeVarsAll = constructTransform helper unionVarSets
  - Bootstrapping Code
  -}
 
-solve :: State -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
-solve st given derived wanted = do
+solve :: State -> EvBindsVar -> [Ct] -> [Ct] -> TcPluginM TcPluginSolveResult
+solve st _evidence given wanted = do
   --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP given
   --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP wanted
   let (old, cts') = unzip . mapMaybe (keepMaybe (handle st)) $ wanted
@@ -742,6 +748,7 @@ myPlugin =
     { tcPluginInit = buildState
     , tcPluginSolve = solve
     , tcPluginStop = stop
+    , tcPluginRewrite = \_ -> emptyUFM
     }
 
 stop :: State -> TcPluginM ()
