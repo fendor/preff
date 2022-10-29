@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module Utils where
 
@@ -196,11 +197,11 @@ type family (≠) a b where
   a ≠ a = False
   a ≠ b = True
 
-type Remove :: [a] -> Nat -> [a]
-type family Remove xs n where
-  Remove (x ': xs) Z = xs
-  Remove (x ': xs) (S n) = Remove xs n
-  Remove '[] x = TypeError (Text "Index out of Bounds")
+type RemoveLast :: [a] -> [a]
+type family RemoveLast xs where
+  RemoveLast '[] = TypeError (Text "Tried to remove last element from empty list")
+  RemoveLast (x ': '[]) = '[]
+  RemoveLast (x ': xs) = x : RemoveLast xs
 
 type a ≁ b = (a ≠ b) ~ True
 

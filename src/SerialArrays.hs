@@ -1,7 +1,9 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# OPTIONS_GHC -fplugin=Plugin #-}
+
+-- {-# OPTIONS_GHC -fplugin=Plugin #-}
 
 {-# HLINT ignore "Use foldM_" #-}
 {-# HLINT ignore "Use void" #-}
@@ -21,27 +23,6 @@ write a b c = Op (Inl $ Write a b c) $ IKleisliTupled return
 
 malloc a b = Op (Inl $ Malloc a b) $ IKleisliTupled return
 
--- slice ::
---   forall
---     k1
---     k2
---     k3
---     (sl1 :: [AccessLevel])
---     (n :: Nat)
---     (t :: k1)
---     (v :: k2)
---     (f2 :: k3 -> k3 -> * -> *)
---     (sr :: k3).
---   ( 'X ≤ Lookup sl1 n) =>
---   AToken t v n ->
---   Int ->
---   Sem
---     (Array :+: f2)
---     '(sl1, sr)
---     '(Append (Append (Replace sl1 n 'N) 'X) 'X, sr)
---     ( AToken t ( 'Slice n) (Length sl1)
---     , AToken t ( 'Slice n) ( 'S (Length sl1))
---     )
 slice a b = Op (Inl $ Split a b) $ IKleisliTupled return
 
 length a = Op (Inl $ Length a) $ IKleisliTupled return
@@ -92,50 +73,28 @@ runSerialArrays (Op (Inl cmd) k) = case cmd of
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 
-quicksortS ::
-  (X ≤ Lookup p n) =>
-  AToken Int r n ->
-  Sem (Array :+: IIO) '(p, ()) '(p, ()) ()
-quicksortS arr = do
-  len <- length arr
-  if len <= 2
-    then do
-      when (len == 2) do
-        v0 <- read arr 0
-        v1 <- read arr 1
-        when (v0 > v1) do
-          write arr 0 v1
-          write arr 1 v0
-    else do
-      i <- partitionS len arr
-      -- _ :: AToken Int r n
-      --   -> Int
-      --   -> Sem
-      --       (Array :+: IIO)
-      --       '(p, ())
-      --       '(Append (Append (Replace p n 'N) 'X) 'X, ())
-      --       (AToken Int ('Slice n) (Length p),
-      --         AToken Int ('Slice n) ('S (Length p)))
-      (i1, i2) <- slice arr (max (i - 1) 0)
-      quicksortS i1
-      quicksortS i2
-      -- _ :: AToken Int ('Slice n) (Length p)
-      --   -> AToken Int ('Slice n) ('S (Length p))
-      --   -> Sem
-      --       (Array :+: IIO)
-      --       '(Append (Append (Replace p n 'N) 'X) 'X, ())
-      --       '(Replace
-      --           (Replace
-      --               (Replace (Append (Append (Replace p n 'N) 'X) 'X) (Length p) 'N)
-      --               ('S (Length p))
-      --               'N)
-      --           n
-      --           'X,
-      --         ())
-      --       ()
-      join i1 i2
-      return ()
+-- quicksortS ::
+--   ( X ≤ Lookup p n) =>
+--   AToken Int r n ->
+--   Sem (Array :+: IIO) '(p, ()) '(p, ()) ()
+-- quicksortS arr = do
+--   len <- length arr
+--   if len <= 2
+--     then do
+--       when (len == 2) do
+--         v0 <- read arr 0
+--         v1 <- read arr 1
+--         when (v0 > v1) do
+--           write arr 0 v1
+--           write arr 1 v0
+--     else do
+--       i <- partitionS len arr
+--       (i1, i2) <- slice arr (max (i - 1) 0)
+--       quicksortS i1
+--       quicksortS i2
+--       join i1 i2
 
+-- >>> :kind! Replace '[X] 'Z 'N
 partitionS :: (Ord t, 'R ≤ Lookup c n, 'X ≤ Lookup c n) => Int -> AToken t v n -> Sem (Array :+: IIO) '(c, p) '(c, p) Int
 partitionS len arr = do
   let lastIndex = len - 1 -- c

@@ -5,15 +5,12 @@ module Parameterised.Array where
 
 import Control.Concurrent.STM
 import Data.Array.IO as IO
-import qualified Data.Array as Array
 import GHC.Types (Any)
 import Parameterised.State (Future (..))
 import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
-import Data.Dynamic (Dynamic)
-import Data.Typeable
 
 data ValueType where
   Actual :: ValueType
@@ -36,7 +33,7 @@ data Array p q x where
     (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
     AToken t (Slice k) n1 ->
     AToken t (Slice k) n2 ->
-    Array p (Remove (Remove (Replace (Replace (Replace p n1 N) n2 N) k X) n2) n1) ()
+    Array p (Replace (RemoveLast (RemoveLast p)) k X) ()
   Malloc ::
     Int ->
     t ->
