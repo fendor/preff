@@ -16,34 +16,34 @@ import Data.Tuple (swap)
 import Prelude hiding ((<>))
 import qualified Prelude
 
-import GHC.Driver.Plugins hiding (TcPlugin)
-import GHC.Core.Predicate
-import GHC.Core.Type
-import GHC.Types.Var.Set
-import GHC.Types.Var
-import GHC.Tc.Types.Constraint
-import GHC.Tc.Types.Evidence
-import GHC.Core.TyCon
-import GHC.Core.DataCon
+import GHC.Builtin.Types
+import qualified GHC.Core as C
 import GHC.Core.Class
-import GHC.Utils.Outputable
+import GHC.Core.Coercion
+import GHC.Core.DataCon
+import GHC.Core.Predicate
+import GHC.Core.TyCo.Rep
+import GHC.Core.TyCon
+import GHC.Core.Type
+import qualified GHC.Driver.Config.Finder as Finder
+import GHC.Driver.Env (HscEnv (..))
+import GHC.Driver.Plugins hiding (TcPlugin)
 import GHC.Tc.Plugin
 import GHC.Tc.Types
-import GHC.Unit.Types
-import GHC.Types.RepType
-import GHC.Core.Coercion
-import GHC.Utils.Panic
-import GHC.Types.Name.Occurrence
-import GHC.Unit.Module.Name
-import GHC.Core.TyCo.Rep
-import GHC.Builtin.Types
-import GHC.Types.Unique.FM
-import qualified GHC.Unit.Finder as Finder
-import GHC.Driver.Env (HscEnv(..))
-import GHC.Unit.Env (ue_units, unsafeGetHomeUnit)
-import qualified GHC.Driver.Config.Finder as Finder
-import qualified GHC.Core as C
+import GHC.Tc.Types.Constraint
+import GHC.Tc.Types.Evidence
 import qualified GHC.Types.Literal as L
+import GHC.Types.Name.Occurrence
+import GHC.Types.RepType
+import GHC.Types.Unique.FM
+import GHC.Types.Var
+import GHC.Types.Var.Set
+import GHC.Unit.Env (ue_units, unsafeGetHomeUnit)
+import qualified GHC.Unit.Finder as Finder
+import GHC.Unit.Module.Name
+import GHC.Unit.Types
+import GHC.Utils.Outputable
+import GHC.Utils.Panic
 
 keepMaybe :: (a -> Maybe b) -> (a -> Maybe (a, b))
 keepMaybe f a = fmap (a,) $ f a
@@ -122,7 +122,9 @@ instance Outputable OpConstraint where
   ppr (OpConstraint OpAcceptable [a, b, c]) =
     text "OpAcceptable"
       <> parens
-        ( ppr a <> comma <> space
+        ( ppr a
+            <> comma
+            <> space
             <> ppr b
             <> comma
             <> space
@@ -131,7 +133,9 @@ instance Outputable OpConstraint where
   ppr (OpConstraint OpAcceptableList [a, b, c]) =
     text "OpAcceptableList"
       <> parens
-        ( ppr a <> comma <> space
+        ( ppr a
+            <> comma
+            <> space
             <> ppr b
             <> comma
             <> space
@@ -480,7 +484,7 @@ majorSimplify info (OpConstraintSet t ch) =
   phase2 x = x
   phase3 (OpConstraint OpEquality [t1, OpApp OpReplace [a, t1', i, x]])
     | t1 == t1' = OpConstraint OpEquality [x, OpApp OpLookup [a, t1, i]]
-  --phase3 (OpConstraint OpLeq [OpApp OpX [], a]) = OpConstraint OpEquality [a, OpApp OpX []]
+  -- phase3 (OpConstraint OpLeq [OpApp OpX [], a]) = OpConstraint OpEquality [a, OpApp OpX []]
   phase3 x = x
   changed = t' /= t''
 majorSimplify _ x = x
@@ -492,21 +496,21 @@ majorSimplify _ x = x
 removeSimplify :: Analysis -> OpConstraint -> [OpConstraint]
 removeSimplify analysis l@(OpConstraint OpAcceptable [a, b, c@(OpVar x)])
   | not (x `elemVarSet` (getVarSet analysis)) =
-    case Map.lookup x (getHelper analysis) of
-      Nothing -> [OpConstraint OpEquality [a, b]]
-      Just OpX -> [OpConstraint OpLeq [mk OpX, a], OpConstraint OpEquality [b, mk OpN], OpConstraint OpEquality [c, mk OpX]]
-      Just OpR -> [OpConstraint OpLeq [mk OpR, a], OpConstraint OpEquality [b, mk OpR], OpConstraint OpEquality [c, mk OpR]]
-      _ -> [l]
+      case Map.lookup x (getHelper analysis) of
+        Nothing -> [OpConstraint OpEquality [a, b]]
+        Just OpX -> [OpConstraint OpLeq [mk OpX, a], OpConstraint OpEquality [b, mk OpN], OpConstraint OpEquality [c, mk OpX]]
+        Just OpR -> [OpConstraint OpLeq [mk OpR, a], OpConstraint OpEquality [b, mk OpR], OpConstraint OpEquality [c, mk OpR]]
+        _ -> [l]
 removeSimplify analysis l@(OpConstraint OpAcceptable [a, b, c@(OpApp OpLookup [_, OpVar xs, i])])
   | not (xs `elemVarSet` (getVarSet analysis)) =
-    case Map.lookup (xs, i) (getHelper3 analysis) of
-      Nothing -> [OpConstraint OpEquality [a, b]]
-      Just OpX -> [OpConstraint OpLeq [mk OpX, a], OpConstraint OpEquality [b, mk OpN], OpConstraint OpEquality [c, mk OpX]]
-      Just OpR -> [OpConstraint OpLeq [mk OpR, a], OpConstraint OpEquality [b, mk OpR], OpConstraint OpEquality [c, mk OpR]]
-      _ -> [l]
+      case Map.lookup (xs, i) (getHelper3 analysis) of
+        Nothing -> [OpConstraint OpEquality [a, b]]
+        Just OpX -> [OpConstraint OpLeq [mk OpX, a], OpConstraint OpEquality [b, mk OpN], OpConstraint OpEquality [c, mk OpX]]
+        Just OpR -> [OpConstraint OpLeq [mk OpR, a], OpConstraint OpEquality [b, mk OpR], OpConstraint OpEquality [c, mk OpR]]
+        _ -> [l]
 removeSimplify analysis (OpConstraint OpAcceptableList [a, OpVar b, OpVar c])
   | not (c `elemVarSet` (getVarSet analysis)) =
-    map (\x -> OpConstraint OpAcceptable [OpApp OpLookup [accessLevel, a, x], OpApp OpLookup [accessLevel, OpVar b, x], OpApp OpLookup [accessLevel, OpVar c, x]]) indices
+      map (\x -> OpConstraint OpAcceptable [OpApp OpLookup [accessLevel, a, x], OpApp OpLookup [accessLevel, OpVar b, x], OpApp OpLookup [accessLevel, OpVar c, x]]) indices
  where
   indicesB = fromMaybe Set.empty (Map.lookup b (getHelper2 analysis))
   indicesC = fromMaybe Set.empty (Map.lookup c (getHelper2 analysis))
@@ -708,19 +712,19 @@ freeVarsAll = constructTransform helper unionVarSets
 
 solve :: State -> EvBindsVar -> [Ct] -> [Ct] -> TcPluginM TcPluginSolveResult
 solve st _evidence given wanted = do
-  --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP given
-  --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP wanted
+  -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP given
+  -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP wanted
   let (old, cts') = unzip . mapMaybe (keepMaybe (handle st)) $ wanted
   let test = mapMaybe (handle st) $ given
   let relevant = getInfo (cts' ++ test)
-  --tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (show relevant)
+  -- tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (show relevant)
   tcPluginIO $ putStrLn $ "what is given:\n " ++ (showSDocUnsafe (interppSP test))
   tcPluginIO $ putStrLn $ "what is requested:\n " ++ (showSDocUnsafe (interppSP cts'))
-  --tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) wanted)))
+  -- tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) wanted)))
   let result = map (majorSimplify relevant . align) cts'
-  let result' = result --result' <- mapM testSimplify' result
+  let result' = result -- result' <- mapM testSimplify' result
   let analysis = getAnalysis (result' ++ test)
-  --tcPluginIO $ putStrLn $ "what is var set:\n " ++ (showSDocUnsafe $ pprVarSet (getVarSet analysis) interppSP)
+  -- tcPluginIO $ putStrLn $ "what is var set:\n " ++ (showSDocUnsafe $ pprVarSet (getVarSet analysis) interppSP)
   tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (showSDocUnsafe $ ppr (getHelper3 analysis))
   let result'' = map (removeSimplify' analysis) result'
   let final = filter (\(a, b) -> hasChanged b) $ zip old result''
@@ -731,11 +735,11 @@ solve st _evidence given wanted = do
       tcPluginIO $ putStrLn $ "what is proven:\n " ++ (showSDocUnsafe (interppSP (map fst final)))
       tcPluginIO $ putStrLn $ "what is wanted:\n " ++ (showSDocUnsafe (interppSP (map snd final)))
       b <- concat <$> mapM (makeIntoCt st) final
-      --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP (mapMaybe (handle st) given)
-      --c <- (mapM testSimplify' . mapMaybe (handle st)) $ wanted
-      --tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) (map fst final))))
-      --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP c
-      --tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP (map majorSimplify . mapMaybe (handle st) $ wanted)
+      -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP (mapMaybe (handle st) given)
+      -- c <- (mapM testSimplify' . mapMaybe (handle st)) $ wanted
+      -- tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) (map fst final))))
+      -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP c
+      -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP (map majorSimplify . mapMaybe (handle st) $ wanted)
       return $ TcPluginOk res b
     else return $ TcPluginOk [] []
 
