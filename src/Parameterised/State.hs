@@ -6,15 +6,17 @@ module Parameterised.State where
 import Data.Kind
 import Utils
 import Prelude hiding (Monad (..))
+import qualified Fcf
 
+type StateF :: forall k . k -> k -> Type -> Type
 data StateF p q x where
-  Alloc :: t -> StateF p (Append p X) (Token t (Length p))
+  Alloc :: t -> StateF p (Fcf.Eval (Append p X)) (Token t (Fcf.Eval (Length p)))
   Get ::
-    (R ≤ Lookup p n) =>
+    (R ≤ Fcf.Eval (Lookup p n)) =>
     Token t n ->
     StateF p p t
-  Put ::
-    (X ≤ Lookup p n) =>
+  Put :: forall (p :: [AccessLevel]) n t .
+    (X ≤ Fcf.Eval (Lookup p n)) =>
     Token t n ->
     t ->
     StateF p p ()

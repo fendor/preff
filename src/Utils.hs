@@ -7,6 +7,8 @@ import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
 import qualified Prelude as P
+import Fcf (Eval)
+import qualified Fcf
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -171,37 +173,32 @@ class IFunctor f => IApplicative f where
 
 data Nat = Z | S Nat
 
-type Lookup :: [a] -> Nat -> a
-type family Lookup a b where
-  Lookup '[] _ = TypeError (Text "Could not find index")
-  Lookup (_ ': xs) (S n) = Lookup xs n
-  Lookup (x ': _) Z = x
+data Lookup :: [a] -> Nat -> Fcf.Exp a
+type instance Eval (Lookup '[] _) = TypeError (Text "Could not find index")
+type instance Eval (Lookup (_ ': xs) (S n)) = Eval (Lookup xs n)
+type instance Eval (Lookup (x ': _) Z) = x
 
-type Replace :: [m] -> Nat -> m -> [m]
-type family Replace xs idx m where
-  Replace (x ': xs) Z m = m ': xs
-  Replace (x ': xs) (S s) m = x ': Replace xs s m
+data Replace :: [m] -> Nat -> m -> Fcf.Exp [m]
+type instance Eval (Replace (x ': xs) Z m) = m ': xs
+type instance Eval (Replace (x ': xs) (S s) m) = x ': Eval (Replace xs s m)
 
-type Append :: [a] -> a -> [a]
-type family Append xs x where
-  Append '[] t = t ': '[]
-  Append (x ': xs) t = x ': Append xs t
+data Append :: [a] -> a -> Fcf.Exp [a]
+type instance Eval (Append '[] t) = t ': '[]
+type instance Eval (Append (x ': xs) t) = x ': Eval (Append xs t)
 
-type Length :: [a] -> Nat
-type family Length a where
-  Length '[] = Z
-  Length (x ': xs) = S (Length xs)
+data Length :: [a] -> Fcf.Exp Nat
+type instance Eval (Length '[]) = Z
+type instance Eval (Length (x ': xs)) = S (Eval (Length xs))
 
 type (≠) :: forall a. a -> a -> Bool
 type family (≠) a b where
   a ≠ a = False
   a ≠ b = True
 
-type RemoveLast :: [a] -> [a]
-type family RemoveLast xs where
-  RemoveLast '[] = TypeError (Text "Tried to remove last element from empty list")
-  RemoveLast (x ': '[]) = '[]
-  RemoveLast (x ': xs) = x : RemoveLast xs
+data Init :: [a] -> Fcf.Exp [a]
+type instance Eval (Init '[]) = TypeError (Text "Tried to call Init on empty list")
+type instance Eval (Init (x ': '[])) = '[x]
+type instance Eval (Init (a ': b ': xs)) = a ': Eval (Init (b ': xs))
 
 type a ≁ b = (a ≠ b) ~ True
 

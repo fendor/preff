@@ -58,6 +58,7 @@ library
     , random
     , safe-mutation-plugin
     , stm
+    , first-class-families
 
   -- Directories containing source files.
   hs-source-dirs:   src

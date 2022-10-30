@@ -11,6 +11,8 @@ import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
+import qualified Fcf
+import Fcf.Combinators
 
 data ValueType where
   Actual :: ValueType
@@ -22,35 +24,35 @@ data AToken t v n where
 
 data Array p q x where
   Split ::
-    (X ≤ Lookup p n, k ~ Length p) =>
+    (X ≤ Fcf.Eval (Lookup p n), k ~ Fcf.Eval (Length p)) =>
     AToken t v n ->
     Int ->
     Array
       p
-      (Append (Append (Replace p n N) X) X)
+      (Fcf.Eval (Append (Fcf.Eval (Append (Fcf.Eval (Replace p n N)) X)) X))
       (AToken t (Slice n) k, AToken t (Slice n) (S k))
   Join ::
-    (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
+    (X ≤ Fcf.Eval (Lookup p n1), X ≤ Fcf.Eval (Lookup p n2), Fcf.Eval (Lookup p k) ~ N) =>
     AToken t (Slice k) n1 ->
     AToken t (Slice k) n2 ->
-    Array p (Replace (RemoveLast (RemoveLast p)) k X) ()
+    Array p (Fcf.Eval (Replace (Fcf.Eval (Init (Fcf.Eval (Init p)))) k X)) ()
   Malloc ::
     Int ->
     t ->
-    Array p (Append p X) (AToken t Actual (Length p))
+    Array p (Fcf.Eval (Append p X)) (AToken t Actual (Fcf.Eval (Length p)))
   Write ::
-    (X ≤ Lookup p n) =>
+    (X ≤ Fcf.Eval (Lookup p n)) =>
     AToken t v n ->
     Int ->
     t ->
     Array p p ()
   Read ::
-    (R ≤ Lookup p n) =>
+    (R ≤ Fcf.Eval (Lookup p n)) =>
     AToken t v n ->
     Int ->
     Array p p t
   Length ::
-    (R ≤ Lookup p n) =>
+    (R ≤ Fcf.Eval (Lookup p n)) =>
     AToken t v n ->
     Array p p Int
   Wait ::

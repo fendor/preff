@@ -16,6 +16,7 @@ import Parameterised.Array hiding (join, length, malloc, read, slice, write)
 import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), length, read)
+import qualified Fcf
 
 join i1 i2 = Op (Inl $ Join i1 i2) $ IKleisliTupled return
 
@@ -73,29 +74,29 @@ runSerialArrays (Op (Inl cmd) k) = case cmd of
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 
--- quicksortS ::
---   ( X ≤ Lookup p n) =>
---   AToken Int r n ->
---   Sem (Array :+: IIO) '(p, ()) '(p, ()) ()
--- quicksortS arr = do
---   len <- length arr
---   if len <= 2
---     then do
---       when (len == 2) do
---         v0 <- read arr 0
---         v1 <- read arr 1
---         when (v0 > v1) do
---           write arr 0 v1
---           write arr 1 v0
---     else do
---       i <- partitionS len arr
---       (i1, i2) <- slice arr (max (i - 1) 0)
---       quicksortS i1
---       quicksortS i2
---       join i1 i2
+quicksortS ::
+  (X ≤ Fcf.Eval (Lookup p n), R ≤ Fcf.Eval (Lookup p n)) =>
+  AToken Int r n ->
+  Sem (Array :+: IIO) '(p, ()) '(p, ()) ()
+quicksortS arr = do
+  len <- length arr
+  if len <= 2
+    then do
+      when (len == 2) do
+        v0 <- read arr 0
+        v1 <- read arr 1
+        when (v0 > v1) do
+          write arr 0 v1
+          write arr 1 v0
+    else do
+      i <- partitionS len arr
+      (i1, i2) <- slice arr (max (i - 1) 0)
+      -- quicksortS i1
+      -- quicksortS i2
+      join i1 i2
 
 -- >>> :kind! Replace '[X] 'Z 'N
-partitionS :: (Ord t, 'R ≤ Lookup c n, 'X ≤ Lookup c n) => Int -> AToken t v n -> Sem (Array :+: IIO) '(c, p) '(c, p) Int
+partitionS :: (Ord t, 'R ≤ Fcf.Eval (Lookup c n), 'X ≤ Fcf.Eval (Lookup c n)) => Int -> AToken t v n -> Sem (Array :+: IIO) '(c, p) '(c, p) Int
 partitionS len arr = do
   let lastIndex = len - 1 -- c
   pivot <- read arr lastIndex
