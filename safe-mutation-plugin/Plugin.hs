@@ -44,6 +44,7 @@ import GHC.Unit.Module.Name
 import GHC.Unit.Types
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
+import Debug.Trace
 
 keepMaybe :: (a -> Maybe b) -> (a -> Maybe (a, b))
 keepMaybe f a = fmap (a,) $ f a
@@ -109,8 +110,24 @@ data OpClass
   | OpLeq
   deriving (Eq)
 
+data OpType
+  = OpApp OpFun [OpType]
+  | OpVar Var
+  | OpLift Type
+  | OpMultiAppend OpType OpType [OpType] -- Contained kind, list, additions
+  | OpShift OpType OpType Int
+  | OpList OpType [OpType]
+  deriving (Eq, Ord)
+
+
+-- | Constraint that we know how to handle and produce better constraints.
+--
+-- @'OpConstraint' class types@
 data OpConstraint = OpConstraint OpClass [OpType]
   deriving (Eq)
+
+-- | Set of constraints we know how to handle.
+-- Contains information whether this constraint has been improved during this run.
 data OpConstraintSet = OpConstraintSet [OpConstraint] Bool
   deriving (Eq)
 
@@ -168,15 +185,6 @@ instance Outputable OpFun where
   ppr OpTrue = text "OpTrue"
   ppr (OpOther tc) = ppr tc
 
-data OpType
-  = OpApp OpFun [OpType]
-  | OpVar Var
-  | OpLift Type
-  | OpMultiAppend OpType OpType [OpType] -- Contained kind, list, additions
-  | OpShift OpType OpType Int
-  | OpList OpType [OpType]
-  deriving (Eq, Ord)
-
 instance Outputable OpType where
   ppr (OpApp f []) = ppr f
   ppr (OpApp f op) = ppr f <> parens (interpp'SP op)
@@ -214,18 +222,26 @@ lookupClass :: Module -> String -> TcPluginM Class
 lookupClass search_module name =
   tcLookupClass =<< lookupOrig search_module (mkTcOcc name)
 
+-- | Convert a type we find into something that we can handle.
+-- If it is just a variable, just take it, otherwise, translate the type family
+-- application.
 convert :: State -> Type -> OpType
 convert s op = case op of
   TyVarTy v -> OpVar v
   TyConApp tc args -> OpApp (convertFun s tc) (map (convert s) args)
   t -> error $ show $ OpLift t
 
+-- | Convert known type constructors into something we know.
+-- This list has been created statically.
 convertFun :: State -> TyCon -> OpFun
 convertFun s tc =
   case lookup tc (getTyCon s) of
     Nothing -> OpOther tc
     Just a -> a
 
+-- | Translate the types into something that GHC understands.
+-- Used for actually generating constraints that GHC might use to
+-- solve the types.
 deconvert :: State -> OpType -> Type
 deconvert s op =
   case op of
@@ -248,10 +264,6 @@ deconvertFun s fun =
       Nothing -> error (showSDocUnsafe (ppr fun))
  where
   s' = map swap (getTyCon s)
-
-lookupId :: Module -> String -> TcPluginM Id
-lookupId search_module name =
-  tcLookupId =<< lookupOrig search_module (mkTcOcc name)
 
 data State = State
   { getTyCon :: [(TyCon, OpFun)]
@@ -326,15 +338,20 @@ alignHelper (OpConstraint OpEquality [t1, t2])
   t2'' = getVars t2
 alignHelper x = x
 
+-- | If possible, translate a fully saturated Class Constraint to
+-- something that we can handle later.
 handleClass :: State -> Class -> [Type] -> Maybe OpConstraintSet
 handleClass st cl args =
-  case (op, args) of
-    (Just a, args) ->
+  case op of
+    Just a ->
       Just $ OpConstraintSet [OpConstraint a (map (convert st) args)] False
     _ -> Nothing
  where
+  -- Is this a class that we actually know?
   op = lookup cl (getClass st)
 
+-- | Convert Ct (Class Constraints) to the set of constraint
+-- that we know how to handle.
 handle :: State -> Ct -> Maybe OpConstraintSet
 handle st ct =
   case classifyPredType (ctPred ct) of
@@ -421,6 +438,15 @@ improveAux _ (OpApp OpTake [a, OpMultiAppend a' (OpApp OpReplace [a''', base, _,
   | {-a == a' && a' == a'' &&-} base == base' = base
 improveAux _ a = a
 
+-- | Remove common constructor patterns into something more manageable.
+-- Examples:
+--
+-- >>> Append a p X
+-- MultiAppend a p [X]
+-- >>> Append a (OpMultiAppend a p xs) X
+-- MultiAppend a p (xs ++ [X])
+--
+-- Merge cons lists, and give Length an anchor point
 removeSingle :: OpType -> OpType
 removeSingle (OpApp OpAppend [a, OpMultiAppend a' base xs, x])
   | a == a' = OpMultiAppend a' base (xs ++ [x])
@@ -437,15 +463,22 @@ removeSingle (OpApp OpCons [a, x, OpList a' xs]) =
   {- a == a'-} OpList a (x : xs)
 removeSingle a = a
 
+improve :: Info -> OpType -> OpType
 improve uf = improveDown (improveAux uf)
+-- | First improvement step, collapse simple constraint patterns.
+improve' :: OpType -> OpType
 improve' = improveDown removeSingle
 
+-- | Apply the improvement function first on the arguments,
+-- then on the overall type.
+--
+-- TODO: this should probably be a Data instance.
 improveDown :: (OpType -> OpType) -> OpType -> OpType
 improveDown cnt (OpApp f args) =
   case nova of
-    OpApp f' args' ->
-      if f /= f'
-        then improveDown cnt (OpApp f' args')
+    OpApp f1 args1 ->
+      if f /= f1
+        then improveDown cnt (OpApp f1 args1)
         else nova
     _ -> nova
  where
@@ -468,6 +501,10 @@ improveDown cnt (OpList a xs) =
   xs' = map (improveDown cnt) xs
 improveDown cnt a = cnt a
 
+-- | First simplification step, given the info that we collected
+-- previously, and the type constraints we need to solve for, try to
+-- simplify the constraint into something that we intuitively know to hold.
+--
 majorSimplify :: Info -> OpConstraintSet -> OpConstraintSet
 majorSimplify info (OpConstraintSet t ch) =
   OpConstraintSet t'' (ch || changed)
@@ -535,17 +572,29 @@ removeSimplify' analysis (OpConstraintSet ls ch) =
  - Analysis Code, Part 1
  -}
 
+-- | All Variables to the respective type, contains values of:
+--
+-- * m ~ True ==> (m, True)
+-- * p@(Lookup _ _) ~ m ==> (m, p)
 type Helper5 = Map Var OpType
+-- | Disequality constraints, hinting that the two types are
+-- not equal
 type Helper8 = [(OpType, OpType)]
 
 data Info = Info
   { getUnionFind :: UnionFind
+  -- ^ Bags of variables occurring in 'AcceptableList'.
+  -- Bags are non-overlapping, presumably.
   , getHelper5 :: Helper5
+  -- ^ Lookup constraints and definitely valid equality constraints
   , getHelper6 :: Helper3
+  -- ^ Lookup constraints to be refined later
   , getHelper8 :: Helper8
+  -- ^ Disequality constraints, to be used later
   }
   deriving (Show)
 
+getInfo :: [OpConstraintSet] -> Info
 getInfo xs =
   Info
     { getUnionFind = getUnionFindAll xs
@@ -563,10 +612,18 @@ instance Outputable UnionFind where
   ppr (UnionFind uf) = interpp'SP uf
 
 instance Prelude.Semigroup UnionFind where
+  -- Merges bags of variables.
+  --
+  -- >>> [[a, b, c], [d, e]] <> [[a, b]]
+  -- [[a, b, c], [d, e]]
+  --
+  -- >>> [[a, b, c], [d, e]] <> [[a, e]]
+  -- [[a, b, c, e], [d, e]]
+  --
   (<>) uf1 (UnionFind xs) = foldr add uf1 xs
    where
     add varSet (UnionFind uf) =
-      case findIndex (\varSet' -> not (varSet `disjointVarSet` varSet')) uf of
+      case findIndex (\varSet' -> varSet `intersectsVarSet` varSet') uf of
         Nothing -> UnionFind $ varSet : uf
         Just i ->
           let (a, b : c) = splitAt i uf
@@ -575,6 +632,10 @@ instance Prelude.Semigroup UnionFind where
 instance Monoid UnionFind where
   mempty = UnionFind []
 
+-- | Find all sets of variables of Constraints such as @AcceptableList a b c@ and
+-- @AcceptableList (Replace _ a _ _) b c@ and merges the variable set
+-- in case of overlaps.
+getUnionFindAll :: [OpConstraintSet] -> UnionFind
 getUnionFindAll = constructTransform helper fold
  where
   helper (OpConstraint OpAcceptableList [OpVar a, OpVar b, OpVar c]) = UnionFind [mkVarSet [a, b, c]]
@@ -590,6 +651,10 @@ compatible (UnionFind uf) (OpVar a) (OpVar b) =
     Nothing -> False
 compatible _ _ _ = False
 
+-- | Get all constraints of the form:
+--
+-- * @p\@(Lookup p _) ~ m => (m, p)@
+-- * @m ~ True => (m, True)@
 getHelper5All :: [OpConstraintSet] -> Helper5
 getHelper5All = constructTransform helper Map.unions
  where
@@ -597,6 +662,14 @@ getHelper5All = constructTransform helper Map.unions
   helper (OpConstraint OpEquality [OpVar m, p@(OpApp OpTrue [])]) = Map.singleton m p
   helper _ = Map.empty
 
+-- | Get constraints of the form:
+--
+-- * @X <= Lookup p i ==> ((p, i), X)@
+-- * @R <= Lookup p i ==> ((p, i), R)@
+-- * @X <= n if n ~ Lookup p i ==> ((p, i), X)@
+-- * @R <= n if n ~ Lookup p i ==> ((p, i), R)@
+--
+-- Will be used to generate transitive constraints.
 getHelper6All :: Helper5 -> [OpConstraintSet] -> Helper3
 getHelper6All helper5 = constructTransform helper (Map.unionsWith maxFun)
  where
@@ -609,6 +682,10 @@ getHelper6All helper5 = constructTransform helper (Map.unionsWith maxFun)
   helper _ = Map.empty
   helper' xs i y = Map.singleton (xs, i) y
 
+-- | Collect all inequality constraints of the form:
+--
+-- * @a /~ b ~ True ==> [(a, b), (b, a)]@
+-- * @a /~ b ~ c if c ~ True ==> [(a, b), (b, a)]@
 getHelper8All :: Helper5 -> [OpConstraintSet] -> Helper8
 getHelper8All helper5 = constructTransform helper concat
  where
@@ -621,6 +698,7 @@ getHelper8All helper5 = constructTransform helper concat
  - Analysis Code, Part 2
  -}
 
+-- | Transform the set of constraints into a single element.
 constructTransform :: (OpConstraint -> a) -> ([a] -> a) -> ([OpConstraintSet] -> a)
 constructTransform transform union = mapUnion transform'
  where
@@ -712,28 +790,29 @@ freeVarsAll = constructTransform helper unionVarSets
 
 solve :: State -> EvBindsVar -> [Ct] -> [Ct] -> TcPluginM TcPluginSolveResult
 solve st _evidence given wanted = do
-  -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP given
-  -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP wanted
+  -- Translate the wanted constraints to something we can understand
   let (old, cts') = unzip . mapMaybe (keepMaybe (handle st)) $ wanted
+  -- Get our already solved constraints that we know how to handle
   let test = mapMaybe (handle st) $ given
+  -- Preprocess the information we have into a record of relevant infos
   let relevant = getInfo (cts' ++ test)
   -- tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (show relevant)
-  tcPluginIO $ putStrLn $ "what is given:\n " ++ (showSDocUnsafe (interppSP test))
-  tcPluginIO $ putStrLn $ "what is requested:\n " ++ (showSDocUnsafe (interppSP cts'))
+  -- tcPluginIO $ putStrLn $ "what is given:\n " ++ (showSDocUnsafe (interppSP test))
+  -- tcPluginIO $ putStrLn $ "what is requested:\n " ++ (showSDocUnsafe (interppSP cts'))
   -- tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) wanted)))
   let result = map (majorSimplify relevant . align) cts'
   let result' = result -- result' <- mapM testSimplify' result
   let analysis = getAnalysis (result' ++ test)
   -- tcPluginIO $ putStrLn $ "what is var set:\n " ++ (showSDocUnsafe $ pprVarSet (getVarSet analysis) interppSP)
-  tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (showSDocUnsafe $ ppr (getHelper3 analysis))
+  -- tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (showSDocUnsafe $ ppr (getHelper3 analysis))
   let result'' = map (removeSimplify' analysis) result'
   let final = filter (\(a, b) -> hasChanged b) $ zip old result''
   let res = map (turnIntoCt st) final
   if not (null res)
     then do
-      tcPluginIO $ putStrLn "---here---"
-      tcPluginIO $ putStrLn $ "what is proven:\n " ++ (showSDocUnsafe (interppSP (map fst final)))
-      tcPluginIO $ putStrLn $ "what is wanted:\n " ++ (showSDocUnsafe (interppSP (map snd final)))
+      -- tcPluginIO $ putStrLn "---here---"
+      -- tcPluginIO $ putStrLn $ "what is proven:\n " ++ (showSDocUnsafe (interppSP (map fst final)))
+      -- tcPluginIO $ putStrLn $ "what is wanted:\n " ++ (showSDocUnsafe (interppSP (map snd final)))
       b <- concat <$> mapM (makeIntoCt st) final
       -- tcPluginIO $ putStrLn $ showSDocUnsafe $ interppSP (mapMaybe (handle st) given)
       -- c <- (mapM testSimplify' . mapMaybe (handle st)) $ wanted
