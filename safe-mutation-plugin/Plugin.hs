@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Plugin (plugin) where
 
@@ -529,7 +531,7 @@ majorSimplify _ x = x
 {-
  - Simplification, Part 2
  -}
-
+-- | Simplify the constraint and generate new ones as required.
 removeSimplify :: Analysis -> OpConstraint -> [OpConstraint]
 removeSimplify analysis l@(OpConstraint OpAcceptable [a, b, c@(OpVar x)])
   | not (x `elemVarSet` (getVarSet analysis)) =
@@ -556,16 +558,18 @@ removeSimplify analysis (OpConstraint OpAcceptableList [a, OpVar b, OpVar c])
 removeSimplify analysis (OpConstraint OpLeq [a, OpApp OpLookup [_, OpVar xs, i]])
   | Just b <- Map.lookup (xs, i) (getHelper4 analysis) = [OpConstraint OpLeq [a, mk b]]
 removeSimplify analysis (OpConstraint OpLeq [OpApp OpR [], OpVar v])
-  | Just (OpApp OpLookup [_, OpVar xs, i]) <- Map.lookup v (getHelper7 analysis), Just OpX <- Map.lookup (xs, i) (getHelper3 analysis) = []
+  | Just (OpApp OpLookup [_, OpVar xs, i]) <- Map.lookup v (getHelper7 analysis), Just OpX <- traceShowId $ Map.lookup (xs, i) (getHelper3 analysis) = []
 removeSimplify analysis (OpConstraint OpEquality [a, OpApp OpLookup [_, OpVar xs, i]])
   | Nothing <- Map.lookup (xs, i) (getHelper3 analysis) = []
 {-removeSimplify analysis (OpConstraint OpAcceptableList [a, b, OpVar x])
   | not (x `elemVarSet` (getVarSet analysis)) = [OpConstraint OpEquality [a, b]]-}
 removeSimplify _ x = [x]
 
+-- | Use the analysis, to generate more constraints for the given constraint
+-- that we don't know how to solve, yet.
 removeSimplify' :: Analysis -> OpConstraintSet -> OpConstraintSet
 removeSimplify' analysis (OpConstraintSet ls ch) =
-  let t = ls >>= removeSimplify analysis
+  let t = concatMap (removeSimplify analysis) ls
    in OpConstraintSet t (t /= ls || ch)
 
 {-
@@ -586,13 +590,26 @@ data Info = Info
   -- ^ Bags of variables occurring in 'AcceptableList'.
   -- Bags are non-overlapping, presumably.
   , getHelper5 :: Helper5
-  -- ^ Lookup constraints and definitely valid equality constraints
+  -- ^ Lookup constraints and definitely valid equality constraints.
+  -- Constraints of the form:
+  --
+  -- * @p\@(Lookup p _) ~ m => (m, p)@
+  -- * @m ~ True => (m, True)@
   , getHelper6 :: Helper3
-  -- ^ Lookup constraints to be refined later
+  -- ^ Lookup constraints to be refined later.
   , getHelper8 :: Helper8
   -- ^ Disequality constraints, to be used later
   }
   deriving (Show)
+
+instance Outputable Info where
+  ppr Info {..} =
+    vcat
+      [ "Bags of variables" <+> ppr getUnionFind
+      , "Lookup constraints" <+> ppr getHelper5
+      , "Unrefined Lookup constraints" <+> ppr getHelper6
+      , "Disequality constraints" <+> ppr getHelper8
+      ]
 
 getInfo :: [OpConstraintSet] -> Info
 getInfo xs =
@@ -642,6 +659,8 @@ getUnionFindAll = constructTransform helper fold
   helper (OpConstraint OpAcceptableList [OpApp OpReplace [_, OpVar a, _, _], OpVar b, OpVar c]) = UnionFind [mkVarSet [a, b, c]]
   helper _ = mempty
 
+-- | Two variable types are compatible if they are the same
+-- or they both belong to the same VarSet (e.g. bag of variables).
 compatible :: UnionFind -> OpType -> OpType -> Bool
 compatible _ a b
   | a == b = True
@@ -710,13 +729,34 @@ type Helper2 = Map Var (Set OpType)
 type Helper3 = Map (Var, OpType) OpFun
 
 data Analysis = Analysis
-  { getHelper :: Helper -- (x, a) for every Leq a x, for concrete a, var x
-  , getHelper2 :: Helper2 -- (xs, is) where Leq a (Lookup xs i) for concrete a, var xs, for each i in is
-  , getHelper3 :: Helper3 -- ((xs, i), a) for every Leq a (Lookup xs i), for concrete a, variable xs
-  , getHelper4 :: Helper3 -- ((xs, i), a) for every (Lookup xs i ~ a), for concrete a, variable xs
+  { getHelper :: Helper
+  -- ^ (x, a) for every Leq a x, for concrete a, var x
+  , getHelper2 :: Helper2
+  -- ^ (xs, is) where Leq a (Lookup xs i) for concrete a, var xs, for each i in is
+  , getHelper3 :: Helper3
+  -- ^ ((xs, i), a) for every Leq a (Lookup xs i), for concrete a, variable xs
+  , getHelper4 :: Helper3
+  -- ^ ((xs, i), a) for every (Lookup xs i ~ a), for concrete a, variable xs
   , getHelper7 :: Helper5
-  , getVarSet :: VarSet -- Free variables
+  -- ^ Constraints of the form:
+  --
+  -- * @p\@(Lookup p _) ~ m => (m, p)@
+  -- * @m ~ True => (m, True)@
+  -- TODO: isn't that kind of the same as getHelper4?
+  , getVarSet :: VarSet
+  -- ^ Free variables
   }
+
+instance Outputable Analysis where
+  ppr Analysis {..} =
+    vcat
+      [ "getHelper" <+> ppr getHelper
+      , "getHelper2" <+> ppr getHelper2
+      , "getHelper3" <+> ppr getHelper3
+      , "getHelper4" <+> ppr getHelper4
+      , "getHelper7" <+> ppr getHelper7
+      , "getVarSet (free variables)" <+> ppr getVarSet
+      ]
 
 getAnalysis :: [OpConstraintSet] -> Analysis
 getAnalysis xs =
@@ -796,17 +836,20 @@ solve st _evidence given wanted = do
   let test = mapMaybe (handle st) $ given
   -- Preprocess the information we have into a record of relevant infos
   let relevant = getInfo (cts' ++ test)
-  -- tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (show relevant)
-  -- tcPluginIO $ putStrLn $ "what is given:\n " ++ (showSDocUnsafe (interppSP test))
-  -- tcPluginIO $ putStrLn $ "what is requested:\n " ++ (showSDocUnsafe (interppSP cts'))
-  -- tcPluginIO $ putStrLn $ "what is additional:\n " ++ (showSDocUnsafe (interppSP (map (ctLocSpan . ctLoc) wanted)))
-  let result = map (majorSimplify relevant . align) cts'
-  let result' = result -- result' <- mapM testSimplify' result
-  let analysis = getAnalysis (result' ++ test)
-  -- tcPluginIO $ putStrLn $ "what is var set:\n " ++ (showSDocUnsafe $ pprVarSet (getVarSet analysis) interppSP)
-  -- tcPluginIO $ putStrLn $ "what is relevant:\n " ++ (showSDocUnsafe $ ppr (getHelper3 analysis))
-  let result'' = map (removeSimplify' analysis) result'
-  let final = filter (\(a, b) -> hasChanged b) $ zip old result''
+  tcPluginTrace "relevant" (ppr relevant)
+  tcPluginTrace "what is given" (interppSP test)
+  tcPluginTrace "what is requested" (interppSP cts')
+  tcPluginTrace "what is additional" (interppSP (map (ctLocSpan . ctLoc) wanted))
+  -- simplify the constraints we want into something more manageable
+  let simplifiedWantedCnstr = map (majorSimplify relevant . align) cts'
+  tcPluginTrace "simplified wanted" (interppSP simplifiedWantedCnstr)
+  let analysis = getAnalysis (simplifiedWantedCnstr ++ test)
+  tcPluginTrace "analysis result" (ppr analysis)
+  let newCts = map (removeSimplify' analysis) simplifiedWantedCnstr
+  tcPluginTrace "simplified constraints" (ppr newCts)
+  -- Only translate constraints that have actually changed
+  let final = filter (\(_a, b) -> hasChanged b) $ zip old newCts
+  -- translate with proves
   let res = map (turnIntoCt st) final
   if not (null res)
     then do
