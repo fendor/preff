@@ -98,11 +98,23 @@ data OpClass
 
 data OpType
   = OpApp OpFun [OpType]
+  -- ^ Function application, such as @OpApp OpLookup [kind, elems, index]@
   | OpVar Var
+  -- ^ Type and kind variables
   | OpLift Type
-  | OpMultiAppend OpType OpType [OpType] -- Contained kind, list, additions
+  -- ^ Unused
+  | OpMultiAppend OpType OpType [OpType]
+  -- ^ Contained kind, list, additions
   | OpShift OpType OpType Int
+  -- ^ For constraints such as @Lookup (Append p X) (Length p)@, where
+  -- we statically can tell that @Lookup (Append p X) (Length p) ~ X@.
+  --
+  -- We use this Shift to remember even more index information, e.g. to translate
+  -- @Lookup (Append (Append p n) m) (S (Length p))@ into something like:
+  -- @OpShift kind [n, m] 1@.
   | OpList OpType [OpType]
+  -- ^ More efficient representation of lists.
+  -- Could be expressed via qOpApp OpCons [kind, OpApp OpCons ...]@
   deriving (Eq, Ord)
 
 
@@ -381,17 +393,17 @@ hasChanged (OpConstraintSet _ ch) = ch
  - Simplification, Part 1
  -}
 
-improveAux :: Info -> OpType -> OpType
+improveAux :: KnownConstraints -> OpType -> OpType
 {-improveAux (OpApp OpLookup [a, OpMultiAppend a' base (x:xs), OpApp OpLen [a'', base']])
   | a == a' && a' == a'' && base == base' = x-}
 improveAux info (OpApp OpLookup [a, OpMultiAppend a' base xs, OpShift a'' base' i])
   | {-a == a' && a' == a'' &&-} compatible (getUnionFind info) base base' && i < length xs = xs !! i
 improveAux info (OpApp OpLookup [a, OpMultiAppend a' (OpApp OpReplace [a''', OpVar base, c, d]) xs, e])
-  | Just _ <- Map.lookup (base, e) (getHelper6 info) = OpApp OpLookup [a, OpApp OpReplace [a''', OpVar base, c, d], e]
+  | Just _ <- Map.lookup (base, e) (equalityConstraintsUnrefined info) = OpApp OpLookup [a, OpApp OpReplace [a''', OpVar base, c, d], e]
 improveAux info (OpApp OpDisequality [_, e, OpShift _ (OpVar base) _])
-  | Just _ <- Map.lookup (base, e) (getHelper6 info) = OpApp OpTrue []
+  | Just _ <- Map.lookup (base, e) (equalityConstraintsUnrefined info) = OpApp OpTrue []
 improveAux info (OpApp OpLookup [a, OpApp OpReplace [a', OpVar base, e', _], e]) -- = error $ show info
-  | (e, e') `elem` (getHelper8 info) = OpApp OpLookup [a, OpVar base, e]
+  | (e, e') `elem` (disequalityConstraints info) = OpApp OpLookup [a, OpVar base, e]
 improveAux _ (OpMultiAppend a (OpMultiAppend a' base xs) ys)
   | a == a' = OpMultiAppend a base (xs ++ ys)
 improveAux _ (OpApp OpReplace [a, OpMultiAppend a' base xs, OpShift a'' base' i, x])
@@ -449,7 +461,7 @@ removeSingle (OpApp OpCons [a, x, OpList a' xs]) =
   {- a == a'-} OpList a (x : xs)
 removeSingle a = a
 
-improve :: Info -> OpType -> OpType
+improve :: KnownConstraints -> OpType -> OpType
 improve uf = improveDown (improveAux uf)
 -- | First improvement step, collapse simple constraint patterns.
 improve' :: OpType -> OpType
@@ -491,7 +503,7 @@ improveDown cnt a = cnt a
 -- previously, and the type constraints we need to solve for, try to
 -- simplify the constraint into something that we intuitively know to hold.
 --
-majorSimplify :: Info -> OpConstraintSet -> OpConstraintSet
+majorSimplify :: KnownConstraints -> OpConstraintSet -> OpConstraintSet
 majorSimplify info (OpConstraintSet t ch) =
   OpConstraintSet t'' (ch || changed)
  where
@@ -569,38 +581,55 @@ type Helper5 = Map Var OpType
 -- not equal
 type Helper8 = [(OpType, OpType)]
 
-data Info = Info
+-- | Information record containing the existing constraints.
+-- It is to note, the contents of this record are GHC version dependent.
+-- Older versions of GHC (8.10.7) generate different constraints, e.g. for:
+--
+-- @
+--   (Leq x (Lookup p n))
+-- @
+--
+-- GHC generated the constraints:
+--
+-- @[Leq x c, c ~ Lookup p n]@
+--
+-- However, GHC 9.4.2 only generated:
+--
+-- @[Leq x (Lookup p n)]@
+--
+-- Causing important information to not be present in the analysis phase.
+data KnownConstraints = KnownConstraints
   { getUnionFind :: UnionFind
   -- ^ Bags of variables occurring in 'AcceptableList'.
   -- Bags are non-overlapping, presumably.
-  , getHelper5 :: Helper5
+  , equalityConstraints :: Helper5
   -- ^ Lookup constraints and definitely valid equality constraints.
   -- Constraints of the form:
   --
   -- * @p\@(Lookup p _) ~ m => (m, p)@
   -- * @m ~ True => (m, True)@
-  , getHelper6 :: Helper3
+  , equalityConstraintsUnrefined :: Helper3
   -- ^ Lookup constraints to be refined later.
-  , getHelper8 :: Helper8
+  , disequalityConstraints :: Helper8
   -- ^ Disequality constraints, to be used later
   }
 
-instance Outputable Info where
-  ppr Info {..} = hang "Info:" 2 $
+instance Outputable KnownConstraints where
+  ppr KnownConstraints {..} = hang "KnownConstraints:" 2 $
     vcat
       [ "Bags of variables" <+> ppr getUnionFind
-      , "Lookup constraints" <+> ppr getHelper5
-      , "Unrefined Lookup constraints" <+> ppr getHelper6
-      , "Disequality constraints" <+> ppr getHelper8
+      , "Equality constraints" <+> ppr equalityConstraints
+      , "Unrefined Equality constraints" <+> ppr equalityConstraintsUnrefined
+      , "Disequality constraints" <+> ppr disequalityConstraints
       ]
 
-getInfo :: [OpConstraintSet] -> Info
+getInfo :: [OpConstraintSet] -> KnownConstraints
 getInfo xs =
-  Info
+  KnownConstraints
     { getUnionFind = getUnionFindAll xs
-    , getHelper5 = helper5
-    , getHelper6 = getHelper6All helper5 xs
-    , getHelper8 = getHelper8All helper5 xs
+    , equalityConstraints = helper5
+    , equalityConstraintsUnrefined = getHelper6All helper5 xs
+    , disequalityConstraints = getHelper8All helper5 xs
     }
  where
   helper5 = getHelper5All xs
@@ -654,7 +683,7 @@ compatible _ _ _ = False
 
 -- | Get all constraints of the form:
 --
--- * @p\@(Lookup p _) ~ m => (m, p)@
+-- * @p\@(Lookup (Var _) _) ~ m => (m, p)@
 -- * @m ~ True => (m, True)@
 getHelper5All :: [OpConstraintSet] -> Helper5
 getHelper5All = constructTransform helper Map.unions
