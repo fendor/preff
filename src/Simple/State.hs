@@ -45,6 +45,14 @@ ambiguityExample = do
   _i <- getS
   return ()
 
+localS :: (s -> s) -> Sem (StateS s :+: eff) '(p, sr) '(p, sr) a -> Sem (StateS s :+: eff) '(p, sr) '(p, sr) a
+localS f act = do
+  s <- getNS1
+  putNS1 (f s)
+  a <- act
+  putNS1 s
+  return a
+
 -- typeExperiment :: Sem (StateS Int :+: (StateS String :+: IIdentity)) '((), '((), ())) '((), '((), ())) String
 -- typeExperiment :: Sem (StateS Int :+: StateS String) '(p, s) '(p, s) [Char]
 typeExperiment :: Sem (StateS Int :+: (StateS String :+: IIdentity)) '(sl1, '(sl2, sr)) '(sl1, '(sl2, sr)) [Char]
@@ -56,6 +64,9 @@ typeExperiment = do
 -- getNS1 :: Sem (StateS i :+: StateS s :+: IIdentity) '(p, q) '(p, q) i
 getNS1 :: Sem (StateS a :+: f2) '(sl, sr) '(sl, sr) a
 getNS1 = Op (Inl GetS) (IKleisliTupled return)
+
+putNS1 :: a -> Sem (StateS a :+: f2) '(sl, sr) '(sl, sr) ()
+putNS1 s = Op (Inl $ PutS s) (IKleisliTupled return)
 
 -- putNS2 :: i -> Sem (s :+: StateS i :+: effs) '(e, '(p, u)) '(e, '(p, u)) ()
 putNS2 :: s -> Sem (f1 :+: (StateS s :+: f2)) '(sl, '(sl2, sr)) '(sl, '(sl2, sr)) ()
