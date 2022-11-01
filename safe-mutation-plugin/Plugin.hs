@@ -38,7 +38,6 @@ import qualified GHC.Types.Literal as L
 import GHC.Types.Name.Occurrence
 import GHC.Types.RepType
 import GHC.Types.Unique.FM
-import GHC.Types.Var
 import GHC.Types.Var.Set
 import GHC.Unit.Env (ue_units, unsafeGetHomeUnit)
 import qualified GHC.Unit.Finder as Finder
@@ -46,7 +45,7 @@ import GHC.Unit.Module.Name
 import GHC.Unit.Types
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
-import Debug.Trace
+import GHC.Utils.Trace
 
 keepMaybe :: (a -> Maybe b) -> (a -> Maybe (a, b))
 keepMaybe f a = fmap (a,) $ f a
@@ -63,21 +62,6 @@ instance Eq Type where
 
 instance Ord Type where
   compare = nonDetCmpType
-
-instance Show Var where
-  show = showSDocUnsafe . ppr
-
-instance Show OpType where
-  show = showSDocUnsafe . ppr
-
-instance Show Type where
-  show = showSDocUnsafe . ppr
-
-instance Show OpFun where
-  show = showSDocUnsafe . ppr
-
-instance Show VarSet where
-  show = showSDocUnsafe . flip pprVarSet interppSP
 
 data OpFun
   = OpReplace
@@ -231,7 +215,7 @@ convert :: State -> Type -> OpType
 convert s op = case op of
   TyVarTy v -> OpVar v
   TyConApp tc args -> OpApp (convertFun s tc) (map (convert s) args)
-  t -> error $ show $ OpLift t
+  t -> panicDoc "conversion failure" $ ppr t
 
 -- | Convert known type constructors into something we know.
 -- This list has been created statically.
@@ -558,7 +542,7 @@ removeSimplify analysis (OpConstraint OpAcceptableList [a, OpVar b, OpVar c])
 removeSimplify analysis (OpConstraint OpLeq [a, OpApp OpLookup [_, OpVar xs, i]])
   | Just b <- Map.lookup (xs, i) (getHelper4 analysis) = [OpConstraint OpLeq [a, mk b]]
 removeSimplify analysis (OpConstraint OpLeq [OpApp OpR [], OpVar v])
-  | Just (OpApp OpLookup [_, OpVar xs, i]) <- Map.lookup v (getHelper7 analysis), Just OpX <- traceShowId $ Map.lookup (xs, i) (getHelper3 analysis) = []
+  | Just (OpApp OpLookup [_, OpVar xs, i]) <- Map.lookup v (getHelper7 analysis), Just OpX <- pprTraceIt "" $ Map.lookup (xs, i) (getHelper3 analysis) = []
 removeSimplify analysis (OpConstraint OpEquality [a, OpApp OpLookup [_, OpVar xs, i]])
   | Nothing <- Map.lookup (xs, i) (getHelper3 analysis) = []
 {-removeSimplify analysis (OpConstraint OpAcceptableList [a, b, OpVar x])
@@ -600,10 +584,9 @@ data Info = Info
   , getHelper8 :: Helper8
   -- ^ Disequality constraints, to be used later
   }
-  deriving (Show)
 
 instance Outputable Info where
-  ppr Info {..} =
+  ppr Info {..} = hang "Info:" 2 $
     vcat
       [ "Bags of variables" <+> ppr getUnionFind
       , "Lookup constraints" <+> ppr getHelper5
@@ -623,10 +606,9 @@ getInfo xs =
   helper5 = getHelper5All xs
 
 newtype UnionFind = UnionFind [VarSet]
-  deriving (Show)
-
 instance Outputable UnionFind where
-  ppr (UnionFind uf) = interpp'SP uf
+  ppr (UnionFind xs) = "UnionFind {" <+> interpp'SP xs <+> "}"
+
 
 instance Prelude.Semigroup UnionFind where
   -- Merges bags of variables.
