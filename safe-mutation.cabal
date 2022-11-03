@@ -42,6 +42,7 @@ library
   exposed-modules:
     Arrays
     Parameterised.Array
+    Parameterised.Protocol
     Parameterised.State
     SerialArrays
     Simple.State
