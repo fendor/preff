@@ -400,9 +400,9 @@ improveAux :: KnownConstraints -> OpType -> OpType
 improveAux info (OpApp OpLookup [a, OpMultiAppend a' base xs, OpShift a'' base' i])
   | {-a == a' && a' == a'' &&-} compatible (getUnionFind info) base base' && i < length xs = xs !! i
 improveAux info (OpApp OpLookup [a, OpMultiAppend a' (OpApp OpReplace [a''', OpVar base, c, d]) xs, e])
-  | Just _ <- Map.lookup (base, e) (equalityConstraintsUnrefined info) = OpApp OpLookup [a, OpApp OpReplace [a''', OpVar base, c, d], e]
+  | Just _ <- Map.lookup (base, e) (lookupConstraints info) = OpApp OpLookup [a, OpApp OpReplace [a''', OpVar base, c, d], e]
 improveAux info (OpApp OpDisequality [_, e, OpShift _ (OpVar base) _])
-  | Just _ <- Map.lookup (base, e) (equalityConstraintsUnrefined info) = OpApp OpTrue []
+  | Just _ <- Map.lookup (base, e) (lookupConstraints info) = OpApp OpTrue []
 improveAux info (OpApp OpLookup [a, OpApp OpReplace [a', OpVar base, e', _], e]) -- = error $ show info
   | (e, e') `elem` (disequalityConstraints info) = OpApp OpLookup [a, OpVar base, e]
 improveAux _ (OpMultiAppend a (OpMultiAppend a' base xs) ys)
@@ -609,7 +609,7 @@ data KnownConstraints = KnownConstraints
   --
   -- * @p\@(Lookup p _) ~ m => (m, p)@
   -- * @m ~ True => (m, True)@
-  , equalityConstraintsUnrefined :: Helper3
+  , lookupConstraints :: Helper3
   -- ^ Lookup constraints to be refined later.
   , disequalityConstraints :: Helper8
   -- ^ Disequality constraints, to be used later
@@ -620,7 +620,7 @@ instance Outputable KnownConstraints where
     vcat
       [ "Bags of variables" <+> ppr getUnionFind
       , "Equality constraints" <+> ppr equalityConstraints
-      , "Unrefined Equality constraints" <+> ppr equalityConstraintsUnrefined
+      , "Lookup constraints" <+> ppr lookupConstraints
       , "Disequality constraints" <+> ppr disequalityConstraints
       ]
 
@@ -629,7 +629,7 @@ getInfo xs =
   KnownConstraints
     { getUnionFind = getUnionFindAll xs
     , equalityConstraints = helper5
-    , equalityConstraintsUnrefined = getHelper6All helper5 xs
+    , lookupConstraints = getHelper6All helper5 xs
     , disequalityConstraints = getHelper8All helper5 xs
     }
  where
