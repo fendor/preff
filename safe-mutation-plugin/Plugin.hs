@@ -299,6 +299,7 @@ buildState = do
       ]
   return $ State mappingTyCon mappingClass
 
+-- | Translate a natural number to the peano representation.
 getNum :: Int -> OpType
 getNum 0 = OpApp OpZero []
 getNum x = OpApp OpSucc [getNum (x - 1)]
