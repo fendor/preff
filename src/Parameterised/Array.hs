@@ -68,21 +68,21 @@ afork s = Scope AFork s return
 
 afinish s = Scope AFinish s return
 
-join i1 i2 = Impure (Join i1 i2) return
+join i1 i2 = Impure (Join i1 i2) emptyCont
 
-write a b c = Impure (Write a b c) return
+write a b c = Impure (Write a b c) emptyCont
 
-malloc a b = Impure (Malloc a b) return
+malloc a b = Impure (Malloc a b) emptyCont
 
-slice a b = Impure (Split a b) return
+slice a b = Impure (Split a b) emptyCont
 
-length a = Impure (Length a) return
+length a = Impure (Length a) emptyCont
 
-read a b = Impure (Read a b) return
+read a b = Impure (Read a b) emptyCont
 
-wait a = Impure (Wait a) return
+wait a = Impure (Wait a) emptyCont
 
-injectIO a = Impure (InjectIO a) return
+injectIO a = Impure (InjectIO a) emptyCont
 
 -- ----------------------------------------------------------
 -- IO Runner for parallel arrays
@@ -125,7 +125,7 @@ runArraysH (Impure (Malloc i (a :: b)) c) =
        in (IO.newArray bounds a :: IO (IO.IOArray Int b))
             P.>>= ( \arr ->
                       let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
-                       in runArraysH (c (unsafeCreateA (bounds, arr')))
+                       in runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
                   )
 runArraysH (Impure (Read n i) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
@@ -134,7 +134,7 @@ runArraysH (Impure (Read n i) c) =
             then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
             else
               IO.readArray (arr :: IO.IOArray Int Any) offset
-                P.>>= (\v -> v `seq` runArraysH (c (unsafeCoerce v)))
+                P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
 runArraysH (Impure (Write n i (a :: b)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
@@ -142,14 +142,14 @@ runArraysH (Impure (Write n i (a :: b)) c) =
             then error "Index out of bounds"
             else
               IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
-                P.>>= (\v -> v `seq` runArraysH (c ()))
+                P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
 runArraysH (Impure (Length n) c) =
   let ((lower, upper), _arr) = unsafeUncoverA n
    in if upper - lower + 1 < 0
         then error "Should not be here"
-        else runArraysH (c (upper - lower + 1))
+        else runArraysH (runIKleisliTupled c (upper - lower + 1))
 runArraysH (Impure (Join _a _b) c) =
-  runArraysH (c ())
+  runArraysH (runIKleisliTupled c ())
 runArraysH (Impure (Split n i) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
@@ -158,9 +158,9 @@ runArraysH (Impure (Split n i) c) =
             else
               let n1 = (lower, offset)
                in let n2 = (offset + 1, upper)
-                   in runArraysH (c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
+                   in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
 runArraysH (Impure (InjectIO a) c) =
-  a P.>>= (runArraysH . c)
+  a P.>>= (runArraysH . runIKleisliTupled c)
 runArraysH (Scope AFork c a) =
   newEmptyTMVarIO
     P.>>= ( \var {-forkIO ( -} ->

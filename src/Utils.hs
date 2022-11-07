@@ -12,31 +12,49 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
+type f ~> g = forall x . f x -> g x
+
+class IHFunctor h where
+  ihmap :: (IFunctor f , IFunctor g) => (f p q ~> g q r) -> (h (f p q) ~> h (g q r))
+
+class IHFunctor sig => Syntax sig where
+  iemap :: (IMonad m) => (m p q a -> m p q b) -> (sig (m p q) a -> sig (m p q) b)
+  iweave :: (IMonad m, IMonad n, Functor c) => c () -> (forall x . c (m p q x) -> n p q (c x)) -> (sig (m p q) a -> sig (n p q) (c a))
+
 type IProg :: forall k.
-  (k -> k -> Type -> Type)
-  -> (k -> k -> k -> k -> Type -> Type -> Type) -> k -> k -> Type -> Type
+  (k -> k -> Type -> Type) ->
+  (k -> k -> k -> k -> Type -> Type -> Type) ->
+  k ->
+  k ->
+  Type ->
+  Type
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
-  Impure :: f p q x -> (x -> IProg f g q r a) -> IProg f g p r a
-  Scope :: g p p' q' q x x' -> IProg f g p' q' x -> (x' -> IProg f g q r a) -> IProg f g p r a
+  Impure ::
+    f p q x ->
+    IKleisliTupled (IProg f g) '(q, x) '(r, a) ->
+    -- (x' -> IProg f g q r a)
+    IProg f g p r a
+  Scope ::
+      g p p' q' q x x' ->
+      IProg f g p' q' x ->
+      (x' -> IProg f g q r a) ->
+      IProg f g p r a
 
 instance Functor (IProg f g p q) where
   fmap f (Pure a) = Pure $ f a
-  fmap f (Impure op k) = Impure op (fmap (fmap f) k)
+  fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
   fmap f (Scope op prog k) = Scope op prog (fmap (fmap f) k)
 
 instance IFunctor (IProg f g) where
   imap f (Pure a) = Pure $ f a
-  imap f (Impure op k) = Impure op (fmap (imap f) k)
+  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (Scope op prog k) = Scope op prog (fmap (imap f) k)
 
 instance IApplicative (IProg f g) where
   pure = Pure
-
-  -- (<*>) :: forall k (f :: k -> k -> * -> *) (g :: k -> k -> k -> k -> * -> * -> *) (i :: k) (j :: k) a b.
-  --     IProg f g i j (a -> b) -> IProg f g i j a -> IProg f g q r b
   (Pure f) <*> k = fmap f k
-  (Impure fop k') <*> k = Impure fop (fmap (<*> k) k')
+  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   Scope fop prog k' <*> k = Scope fop prog (fmap (<*> k) k')
 
 instance IMonad (IProg f g) where
@@ -45,35 +63,8 @@ instance IMonad (IProg f g) where
 
   (>>=) :: IProg f g i j a -> (a -> IProg f g j k b) -> IProg f g i k b
   (Pure a) >>= f = f a
-  (Impure o a) >>= f = Impure o $ fmap (>>= f) a
+  (Impure o a) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled a)
   (Scope g c a) >>= f = Scope g c (fmap (>>= f) a)
-
-instance IMonad (Sem f) where
-  return :: a -> Sem f i i a
-  return = Value
-
-  (>>=) :: Sem f i j a -> (a -> Sem f j k b) -> Sem f i k b
-  (Value a) >>= f = f a
-  (Op o a) >>= f = Op o (a |> IKleisliTupled f)
-
-type Sem ::
-  (k -> k -> Type -> Type) ->
-  k ->
-  k ->
-  Type ->
-  Type
-data Sem f p q a where
-  Value :: a -> Sem f p p a
-  Op ::
-    f p q x ->
-    IKleisliTupled (Sem f) '(q, x) '(r, a) ->
-    -- x -> Sem f q r a
-    Sem f p r a
-
--- type Op :: forall k . [k -> k -> Type -> Type] -> Type -> Type -> Type -> Type
-data Op fs p q x where
-  Here :: f s t x -> Op (f : fs) (s, p) (t, q) x
-  There :: Op fs s t x -> Op (f : fs) (p, s) (q, t) x
 
 type family Fst x where
   Fst '(a, b) = a
@@ -97,6 +88,14 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
+emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
+emptyCont = IKleisliTupled Utils.return
+
+transformKleisli ::
+  (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2))
+  -> IKleisliTupled m ia ob1
+  -> IKleisliTupled m ia ob2
+transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
 infixr 5 :+:
 type (:+:) ::
@@ -108,21 +107,66 @@ type (:+:) ::
   Type ->
   Type
 data (f1 :+: f2) t1 t2 x where
-  Inl :: f1 sl1 sl2 x -> (f1 :+: f2) '(sl1, sr) '(sl2, sr) x
-  Inr :: f2 sr1 sr2 x -> (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
+  OInl :: f1 sl1 sl2 x -> (f1 :+: f2) '(sl1, sr) '(sl2, sr) x
+  OInr :: f2 sr1 sr2 x -> (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
+
+infixr 5 :++:
+type (:++:) ::
+  forall sl sr.
+  (sl -> sl -> sl -> sl -> Type -> Type -> Type) ->
+  (sr -> sr -> sr -> sr -> Type -> Type -> Type) ->
+  (sl, sr) ->
+  (sl, sr) ->
+  (sl, sr) ->
+  (sl, sr) ->
+  Type ->
+  Type ->
+  Type
+data (f1 :++: f2) p1 p2 q2 q1 x2 x1 where
+  SInl :: f1 p1 p2 q2 q1 x2 x1 -> (f1 :++: f2) '(p1, sr) '(p2, sr) '(q2, sr) '(q1, sr) x2 x1
+  SInr :: f2 sp1 sp2 sq2 sq1 x2 x1 -> (f1 :++: f2) '(sl, sp1) '(sl, sp2) '(sl, sq2) '(sl, sq1) x2 x1
+
+-- TODO: Use this eventually again
+type Ops :: forall k . [k -> k -> Type -> Type] -> k -> k -> Type -> Type
+data Ops fs p q x where
+  Here :: f s t x -> Ops (f : fs) (s, p) (t, q) x
+  There :: Ops fs s t x -> Ops (f : fs) (p, s) (q, t) x
 
 -- ------------------------------------------------
--- Simple Runners
+-- Sem Monad and Simple Runners
 -- ------------------------------------------------
+
+
+instance IMonad (Sem f) where
+  return :: a -> Sem f i i a
+  return = Value
+
+  (>>=) :: Sem f i j a -> (a -> Sem f j k b) -> Sem f i k b
+  (Value a) >>= f = f a
+  (Op o a) >>= f = Op o (a |> IKleisliTupled f)
+
+type Sem ::
+  (k -> k -> Type -> Type) ->
+  k ->
+  k ->
+  Type ->
+  Type
+data Sem f p q a where
+  Value :: a -> Sem f p p a
+  Op ::
+    f p q x ->
+    IKleisliTupled (Sem f) '(q, x) '(r, a) ->
+    -- x -> Sem f q r a
+    Sem f p r a
 
 runPure
   :: (forall j p b. f j p b -> b)
   -> Sem (f :+: fs) '(i, is) '(o, os) a
   -> Sem fs is os a
 runPure _ (Value a) = Value a
-runPure f (Op (Inr cmd) q) = Op cmd k
+runPure f (Op (OInr cmd) q) = Op cmd k
   where k = IKleisliTupled $ \a -> runPure f $ runIKleisliTupled q a
-runPure f (Op (Inl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
+runPure f (Op (OInl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
 
 newtype IIdentity p q a = IIdentity a
 
@@ -142,7 +186,7 @@ runIO (Op (RunIO io) k) = io P.>>= runIO . runIKleisliTupled k
 
 -- TODO: not general enough
 embedIO :: IO a -> Sem (f :+: IIO) '(p1, q1) '(p1, q1) a
-embedIO act = Op (Inr $ RunIO act) (IKleisliTupled return)
+embedIO act = Op (OInr $ RunIO act) (IKleisliTupled return)
 
 embedIO1 :: IO a -> Sem IIO q q a
 embedIO1 act = Op (RunIO act) (IKleisliTupled return)

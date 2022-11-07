@@ -17,22 +17,22 @@ import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), length, read)
 
-join i1 i2 = Op (Inl $ Join i1 i2) $ IKleisliTupled return
+join i1 i2 = Op (OInl $ Join i1 i2) $ IKleisliTupled return
 
-write a b c = Op (Inl $ Write a b c) $ IKleisliTupled return
+write a b c = Op (OInl $ Write a b c) $ IKleisliTupled return
 
-malloc a b = Op (Inl $ Malloc a b) $ IKleisliTupled return
+malloc a b = Op (OInl $ Malloc a b) $ IKleisliTupled return
 
-slice a b = Op (Inl $ Split a b) $ IKleisliTupled return
+slice a b = Op (OInl $ Split a b) $ IKleisliTupled return
 
-length a = Op (Inl $ Length a) $ IKleisliTupled return
+length a = Op (OInl $ Length a) $ IKleisliTupled return
 
-read a b = Op (Inl $ Read a b) $ IKleisliTupled return
+read a b = Op (OInl $ Read a b) $ IKleisliTupled return
 
 runSerialArrays :: Sem (Array :+: IIO) '(p, u) '(q, v) a -> Sem IIO u v a
 runSerialArrays (Value a) = return a
-runSerialArrays (Op (Inr cmd) k) = Op cmd $ IKleisliTupled $ \x -> runSerialArrays $ runIKleisliTupled k x
-runSerialArrays (Op (Inl cmd) k) = case cmd of
+runSerialArrays (Op (OInr cmd) k) = Op cmd $ IKleisliTupled $ \x -> runSerialArrays $ runIKleisliTupled k x
+runSerialArrays (Op (OInl cmd) k) = case cmd of
   Malloc i (a :: b) -> do
     let bounds = (0, i - 1)
     arr <- embedIO1 (IO.newArray bounds a :: IO (IO.IOArray Int b))

@@ -37,16 +37,16 @@ type family Dual proc where
   Dual End = End
 
 send :: a -> Sem (Protocol :+: IIdentity) '(a :! p, sr) '(p, sr) ()
-send a = Op (Inl (Send a)) (IKleisliTupled Utils.return)
+send a = Op (OInl (Send a)) (IKleisliTupled Utils.return)
 
 recv :: Sem (Protocol :+: IIdentity) '(a :? p, sr) '(p, sr) a
-recv = Op (Inl Recv)  (IKleisliTupled Utils.return)
+recv = Op (OInl Recv)  (IKleisliTupled Utils.return)
 
 sel1 :: Sem (Protocol :+: IIdentity) '(a :| b, sr) '(a, sr) ()
-sel1 = Op (Inl Sel1)  (IKleisliTupled Utils.return)
+sel1 = Op (OInl Sel1)  (IKleisliTupled Utils.return)
 
 sel2 :: Sem (Protocol :+: IIdentity) '(a :| b, sr) '(b, sr) ()
-sel2 = Op (Inl Sel2)  (IKleisliTupled Utils.return)
+sel2 = Op (OInl Sel2)  (IKleisliTupled Utils.return)
 
 -- simpleProtocol :: Sem (Protocol :+: IIdentity) '(p, sr) '(Int :! String :? p, sr) String
 simpleServer ::
@@ -102,16 +102,16 @@ choice2 = Ix.do
 
 -- instance Connect End End where
 --   connect (Value x) (Value y) = Ix.return (x, y)
---   connect (Op (Inr op1) k1) (Op (Inr op2) k2) = connect (Op op1 undefined) (Op op2 undefined)
---   connect sl@(Value _) (Op (Inr op2) k2) =
+--   connect (Op (OInr op1) k1) (Op (OInr op2) k2) = connect (Op op1 undefined) (Op op2 undefined)
+--   connect sl@(Value _) (Op (OInr op2) k2) =
 
 -- instance Connect p => Connect (a :! p) where
 --   type Succ (a :! p) = p
 --   -- type Succ2 (a :=)
 
---   connect (Op (Inl (Send (a :: a))) k1) (Op (Inl Recv) k2) =
+--   connect (Op (OInl (Send (a :: a))) k1) (Op (OInl Recv) k2) =
 --     connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
---   -- connect sl@(Op (Inl _) _) (Op (Inr op) k2) = Op op $ \x -> connect sl (runIKleisliTupled k2 x)
+--   -- connect sl@(Op (OInl _) _) (Op (OInr op) k2) = Op op $ \x -> connect sl (runIKleisliTupled k2 x)
 --   connect _ _ = undefined
 
 connect :: Dual p1 ~ q1 =>
@@ -119,7 +119,7 @@ connect :: Dual p1 ~ q1 =>
   Sem (Protocol :+: IIdentity) '(q1, ()) '(End, ()) b ->
   (a, b)
 connect (Value x) (Value y) = (x, y)
-connect (Op (Inl Recv) k1) (Op (Inl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
-connect (Op (Inl (Send a)) k1) (Op (Inl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect (Op (OInl Recv) k1) (Op (OInl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
+connect (Op (OInl (Send a)) k1) (Op (OInl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
 
 
