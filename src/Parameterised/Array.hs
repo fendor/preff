@@ -64,9 +64,10 @@ data Thread p p' q' q x x' where
   AFork :: (AcceptableList p1 q1 p2) => Thread p1 p2 q2 q1 a (Future a)
   AFinish :: Thread p p q p () ()
 
-afork s = Scope AFork s return
+afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
+afork s = Scope AFork s emptyCont
 
-afinish s = Scope AFinish s return
+afinish s = Scope AFinish s emptyCont
 
 join i1 i2 = Impure (Join i1 i2) emptyCont
 
@@ -167,9 +168,9 @@ runArraysH (Scope AFork c a) =
               runArraysH c
                 P.>>= (atomically . mapM_ takeTMVar)
                   P.>> atomically (putTMVar var () {-)-})
-                  P.>> runArraysH (a Future)
+                  P.>> runArraysH (runIKleisliTupled a Future)
                 P.>>= (\result -> P.return (var : result))
           )
 runArraysH (Scope AFinish c a) =
-  runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (a ())
+  runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
 runArraysH _ = undefined

@@ -33,29 +33,30 @@ data IProg f g p q a where
   Impure ::
     f p q x ->
     IKleisliTupled (IProg f g) '(q, x) '(r, a) ->
-    -- (x' -> IProg f g q r a)
+    -- (x -> IProg f g q r a)
     IProg f g p r a
   Scope ::
-      g p p' q' q x x' ->
-      IProg f g p' q' x ->
-      (x' -> IProg f g q r a) ->
-      IProg f g p r a
+    g p p' q' q x x' ->
+    IProg f g p' q' x ->
+    IKleisliTupled (IProg f g) '(q, x') '(r, a) ->
+    -- (x' -> IProg f g q r a) ->
+    IProg f g p r a
 
 instance Functor (IProg f g p q) where
   fmap f (Pure a) = Pure $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (Scope op prog k) = Scope op prog (fmap (fmap f) k)
+  fmap f (Scope op prog k) = Scope op prog (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
 instance IFunctor (IProg f g) where
   imap f (Pure a) = Pure $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (Scope op prog k) = Scope op prog (fmap (imap f) k)
+  imap f (Scope op prog k) = Scope op prog (IKleisliTupled $ imap f . runIKleisliTupled k)
 
 instance IApplicative (IProg f g) where
   pure = Pure
   (Pure f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  Scope fop prog k' <*> k = Scope fop prog (fmap (<*> k) k')
+  Scope fop prog k' <*> k = Scope fop prog (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
 instance IMonad (IProg f g) where
   return :: a -> IProg f g i i a
@@ -63,8 +64,8 @@ instance IMonad (IProg f g) where
 
   (>>=) :: IProg f g i j a -> (a -> IProg f g j k b) -> IProg f g i k b
   (Pure a) >>= f = f a
-  (Impure o a) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled a)
-  (Scope g c a) >>= f = Scope g c (fmap (>>= f) a)
+  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (Scope g c k) >>= f = Scope g c (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -123,8 +124,12 @@ type (:++:) ::
   Type ->
   Type
 data (f1 :++: f2) p1 p2 q2 q1 x2 x1 where
-  SInl :: f1 p1 p2 q2 q1 x2 x1 -> (f1 :++: f2) '(p1, sr) '(p2, sr) '(q2, sr) '(q1, sr) x2 x1
-  SInr :: f2 sp1 sp2 sq2 sq1 x2 x1 -> (f1 :++: f2) '(sl, sp1) '(sl, sp2) '(sl, sq2) '(sl, sq1) x2 x1
+  SInl ::
+    f1 p1 p2 q2 q1 x2 x1 ->
+    (f1 :++: f2) '(p1, sr) '(p2, sr) '(q2, sr) '(q1, sr) x2 x1
+  SInr ::
+    f2 sp1 sp2 sq2 sq1 x2 x1 ->
+    (f1 :++: f2) '(sl, sp1) '(sl, sp2) '(sl, sq2) '(sl, sq1) x2 x1
 
 -- TODO: Use this eventually again
 type Ops :: forall k . [k -> k -> Type -> Type] -> k -> k -> Type -> Type

@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE QualifiedDo #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
@@ -36,9 +35,9 @@ alloc a = Impure (Alloc a) emptyCont
 
 get a = Impure (Get a) emptyCont
 
-fork s = Scope Fork s return
+fork s = Scope Fork s emptyCont
 
-finish s = Scope Finish s return
+finish s = Scope Finish s emptyCont
 
 data StateA p q a where
   PutA :: x -> StateA p x ()
@@ -71,16 +70,30 @@ putAI p = Impure (OInl $ PutA p) emptyCont
 getAI :: IProg (StateA :+: eff) g '(p, sr) '(p, sr) p
 getAI = Impure (OInl GetA) emptyCont
 
-stateCIExp :: IProg (StateA :+: eff) p '(String, ()) '(Int, ()) ()
+getAI2 :: IProg (f :+: StateA :+: eff) g '(sl, '(p, sr)) '(sl, '(p, sr)) p
+getAI2 = Impure (OInr $ OInl GetA) emptyCont
+
+-- putAI2 :: IProg (f :+: StateA :+: eff) g '(sl, '(p, sr)) '(sl, '(p, sr)) p
+putAI2 ::
+  p
+  -> IProg (f1 :+: (StateA :+: f2)) g '(sl, '(q, sr)) '(sl, '(p, sr)) ()
+putAI2 x = Impure (OInr $ OInl $ PutA x) emptyCont
+
+stateCIExp :: IProg (StateA :+: StateA :+: eff) (StateAG :++: IVoid :++: IVoid) '(String, '((), ())) '(Int, '(String, ())) ()
 stateCIExp = Ix.do
   s <- getAI
+  _val <- localAG (const $ Just "") $ Ix.do
+    putAI2 "String"
+    getAI
   putAI (read s + 100)
 
+type IVoid :: forall k. k -> k -> k -> k -> Type -> Type -> Type
+data IVoid p p' q' q x x'
+
 runStateAI ::
-  
   p ->
-  IProg (StateA :+: eff) (StateAG :++: effG) '(p, sr1) '(q, sr2) a ->
-  IProg eff effG sr1 sr2 (a, q)
+  IProg (StateA :+: eff) (StateAG :++: IVoid) '(p, sr1) '(q, sr2) a ->
+  IProg eff IVoid sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (OInl GetA) k) =
   runStateAI p (runIKleisliTupled k p)
@@ -88,18 +101,31 @@ runStateAI _ (Impure (OInl (PutA q)) k) =
   runStateAI q (runIKleisliTupled k ())
 runStateAI p (Impure (OInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+runStateAI p (Scope (SInr _) _ _) = error "Impossible"
 runStateAI p (Scope (SInl (LocalAG f)) act k) = Ix.do
-  (x, p') <- runStateAI (f p) act
-  runStateAI p' (k x)
-runStateAI p (Scope (SInr op) act k) = Ix.do
-  -- TODO: weave abstraction
-  let act' = Ix.iweave undefined undefined undefined
-  Scope op act' $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+  (x, _q) <- runStateAI (f p) act
+  runStateAI p (runIKleisliTupled k x)
+-- runStateAI p (Scope (SInr op) act k) = Ix.do
+--   -- TODO: weave abstraction
+--   let act' = Ix.iweave undefined undefined undefined
+--   Scope op act' $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
 
+-- localAG :: (p -> p') ->
+--   IProg (StateA :+: eff) StateAG '(p', sr1) '(pout, sr2) a ->
+--   IProg (StateA :+: eff) StateAG '(p, sr1) '(q, sr2) a
+-- localAG :: forall p p' q' q f sr1 sr2 a. (p -> p') -> IProg f (StateAG :++: IVoid) '(p', sr1) '(q', sr2) a -> IProg f StateAG '(p, sr1) '(p, sr2) a
+-- localAG ::
+--   (p -> p')
+--   -> IProg f (StateAG :++: f2) '(p', sr1) '(qout, sr2) a
+--   -> IProg f (StateAG :++: f2) '(p, sr1) '(p, sr2) a
+localAG ::
+  (p1 -> p2)
+  -> IProg (StateA :+: f) (StateAG :++: g) '(p2, sr1) '(q2, sr2) a
+  -> IProg (StateA :+: f) (StateAG :++: g) '(p1, sr1) '(p1, sr2) a
+localAG f act = Scope (SInl $ LocalAG f) act emptyCont
 
 type StateAG :: forall k.
   k -> k -> k -> k -> Type -> Type -> Type
 data StateAG p p' q' q x x' where
   LocalAG :: (p -> p') ->
-    StateAG p p' q q x x
-
+    StateAG p p' q' p x x
