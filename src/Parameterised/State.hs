@@ -122,7 +122,8 @@ localAG' ::
 localAG' f act = Scope (LocalAG f) act emptyCont
 
 type StateAG :: forall k.
+  (k -> k -> Type -> Type) ->
   k -> k -> k -> k -> Type -> Type -> Type
-data StateAG p p' q' q x x' where
+data StateAG m p p' q' q x x' where
   LocalAG :: (p -> p') ->
-    StateAG '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x
+    m p' q' x -> StateAG '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x

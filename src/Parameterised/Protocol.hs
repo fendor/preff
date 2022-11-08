@@ -27,31 +27,36 @@ data Protocol p q r where
     Recv :: Protocol (a :? p) p a
     Sel1 :: Protocol (a :| b) a ()
     Sel2 :: Protocol (a :| b) b ()
-    Offer :: Protocol a p () -> Protocol b p () -> Protocol (a :& b) p ()
+
+data ProtocolG p p' q' q x x' where
+    Offer :: ProtocolG p p' q' q x x'
 
 type family Dual proc where
   Dual (a :! p) = a :? Dual p
   Dual (a :? p) = a :! Dual p
-  -- Dual (a :| b) = Dual a :& Dual b
-  -- Dual (a :& b) = Dual a :| Dual a
+  Dual (a :| b) = Dual a :& Dual b
+  Dual (a :& b) = Dual a :| Dual a
   Dual End = End
 
-send :: a -> Sem (Protocol :+: IIdentity) '(a :! p, sr) '(p, sr) ()
-send a = Op (OInl (Send a)) (IKleisliTupled Utils.return)
+send :: a -> IProg (Protocol :+: IIdentity) ProtocolG '(a :! p, sr) '(p, sr) ()
+send a = Impure (OInl (Send a)) (IKleisliTupled Utils.return)
 
-recv :: Sem (Protocol :+: IIdentity) '(a :? p, sr) '(p, sr) a
-recv = Op (OInl Recv)  (IKleisliTupled Utils.return)
+recv :: IProg (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
+recv = Impure (OInl Recv)  (IKleisliTupled Utils.return)
 
-sel1 :: Sem (Protocol :+: IIdentity) '(a :| b, sr) '(a, sr) ()
-sel1 = Op (OInl Sel1)  (IKleisliTupled Utils.return)
+sel1 :: IProg (Protocol :+: IIdentity) ProtocolG '(a :| b, sr) '(a, sr) ()
+sel1 = Impure (OInl Sel1)  (IKleisliTupled Utils.return)
 
-sel2 :: Sem (Protocol :+: IIdentity) '(a :| b, sr) '(b, sr) ()
-sel2 = Op (OInl Sel2)  (IKleisliTupled Utils.return)
+sel2 :: IProg (Protocol :+: IIdentity) ProtocolG '(a :| b, sr) '(b, sr) ()
+sel2 = Impure (OInl Sel2)  (IKleisliTupled Utils.return)
+
+offer s1 s2 = Scope Offer s1 emptyCont
 
 -- simpleProtocol :: Sem (Protocol :+: IIdentity) '(p, sr) '(Int :! String :? p, sr) String
 simpleServer ::
-  Sem
+  IProg
     (Protocol :+: IIdentity)
+    ProtocolG
     '(Int :! (String :? p), sr)
     '(p, sr)
     String
@@ -61,8 +66,9 @@ simpleServer = Ix.do
   Ix.return s
 
 simpleClient ::
-  Sem
+  IProg
     (Protocol :+: IIdentity)
+    ProtocolG
     '(Int :? (String :! p), sr)
     '(p, sr)
     ()
@@ -115,11 +121,9 @@ choice2 = Ix.do
 --   connect _ _ = undefined
 
 connect :: Dual p1 ~ q1 =>
-  Sem (Protocol :+: IIdentity) '(p1, ()) '(End, ()) a ->
-  Sem (Protocol :+: IIdentity) '(q1, ()) '(End, ()) b ->
+  IProg (Protocol :+: IIdentity) ProtocolG '(p1, ()) '(End, ()) a ->
+  IProg (Protocol :+: IIdentity) ProtocolG '(q1, ()) '(End, ()) b ->
   (a, b)
-connect (Value x) (Value y) = (x, y)
-connect (Op (OInl Recv) k1) (Op (OInl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
-connect (Op (OInl (Send a)) k1) (Op (OInl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
-
-
+connect (Pure x) (Pure y) = (x, y)
+connect (Impure (OInl Recv) k1)     (Impure (OInl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
+connect (Impure (OInl (Send a)) k1) (Impure (OInl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)

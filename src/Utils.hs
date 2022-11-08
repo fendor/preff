@@ -23,7 +23,7 @@ class IHFunctor sig => Syntax sig where
 
 type IProg :: forall k.
   (k -> k -> Type -> Type) ->
-  (k -> k -> k -> k -> Type -> Type -> Type) ->
+  ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
   k ->
   k ->
   Type ->
@@ -36,7 +36,7 @@ data IProg f g p q a where
     -- (x -> IProg f g q r a)
     IProg f g p r a
   Scope ::
-    g p p' q' q x x' ->
+    g (IProg f g) p p' q' q x x' ->
     IProg f g p' q' x ->
     IKleisliTupled (IProg f g) '(q, x') '(r, a) ->
     -- (x' -> IProg f g q r a) ->
@@ -137,8 +137,10 @@ data Ops fs p q x where
   Here :: f s t x -> Ops (f : fs) (s, p) (t, q) x
   There :: Ops fs s t x -> Ops (f : fs) (p, s) (q, t) x
 
-type IVoid :: forall k. k -> k -> k -> k -> Type -> Type -> Type
-data IVoid p p' q' q x x'
+type IVoid :: forall k.
+  (k -> k -> Type -> Type) ->
+  k -> k -> k -> k -> Type -> Type -> Type
+data IVoid m p p' q' q x x'
 
 runI :: IProg IIdentity IVoid p q a -> a
 runI (Pure a) = a
