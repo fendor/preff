@@ -137,6 +137,14 @@ data Ops fs p q x where
   Here :: f s t x -> Ops (f : fs) (s, p) (t, q) x
   There :: Ops fs s t x -> Ops (f : fs) (p, s) (q, t) x
 
+type IVoid :: forall k. k -> k -> k -> k -> Type -> Type -> Type
+data IVoid p p' q' q x x'
+
+runI :: IProg IIdentity IVoid p q a -> a
+runI (Pure a) = a
+runI (Impure cmd k) = runI $ runIKleisliTupled k (runIdentity cmd)
+runI (Scope _ _ _) = error "Impossible"
+
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------

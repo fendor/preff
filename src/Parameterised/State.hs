@@ -79,20 +79,32 @@ putAI2 ::
   -> IProg (f1 :+: (StateA :+: f2)) g '(sl, '(q, sr)) '(sl, '(p, sr)) ()
 putAI2 x = Impure (OInr $ OInl $ PutA x) emptyCont
 
-stateCIExp :: IProg (StateA :+: StateA :+: eff) (StateAG :++: IVoid :++: IVoid) '(String, '((), ())) '(Int, '(String, ())) ()
+stateCIExp :: IProg (StateA :+: StateA :+: eff) StateAG '(String, '((), ())) '(Int, '(String, ())) ()
 stateCIExp = Ix.do
   s <- getAI
-  _val <- localAG (const $ Just "") $ Ix.do
+  _val <- localAG' (const $ Just "") $ Ix.do
     putAI2 "String"
     getAI
   putAI (read s + 100)
 
-type IVoid :: forall k. k -> k -> k -> k -> Type -> Type -> Type
-data IVoid p p' q' q x x'
+runStateAIG ::
+  p ->
+  IProg (StateA :+: eff) StateAG '(p, sr1) '(q, sr2) a ->
+  IProg eff IVoid sr1 sr2 (a, q)
+runStateAIG p (Pure x) = Ix.return (x, p)
+runStateAIG p (Impure (OInl GetA) k) =
+  runStateAIG p (runIKleisliTupled k p)
+runStateAIG _ (Impure (OInl (PutA q)) k) =
+  runStateAIG q (runIKleisliTupled k ())
+runStateAIG p (Impure (OInr op) k) =
+  Impure op $ IKleisliTupled $ \x -> runStateAIG p (runIKleisliTupled k x)
+runStateAIG p (Scope (LocalAG f) act k) = Ix.do
+  (x, _q) <- runStateAIG (f p) act
+  runStateAIG p (runIKleisliTupled k x)
 
 runStateAI ::
   p ->
-  IProg (StateA :+: eff) (StateAG :++: IVoid) '(p, sr1) '(q, sr2) a ->
+  IProg (StateA :+: eff) IVoid '(p, sr1) '(q, sr2) a ->
   IProg eff IVoid sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (OInl GetA) k) =
@@ -101,31 +113,16 @@ runStateAI _ (Impure (OInl (PutA q)) k) =
   runStateAI q (runIKleisliTupled k ())
 runStateAI p (Impure (OInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
-runStateAI p (Scope (SInr _) _ _) = error "Impossible"
-runStateAI p (Scope (SInl (LocalAG f)) act k) = Ix.do
-  (x, _q) <- runStateAI (f p) act
-  runStateAI p (runIKleisliTupled k x)
--- runStateAI p (Scope (SInr op) act k) = Ix.do
---   -- TODO: weave abstraction
---   let act' = Ix.iweave undefined undefined undefined
---   Scope op act' $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+runStateAI _p (Scope _ _ _) = error "GHC is not exhaustive"
 
--- localAG :: (p -> p') ->
---   IProg (StateA :+: eff) StateAG '(p', sr1) '(pout, sr2) a ->
---   IProg (StateA :+: eff) StateAG '(p, sr1) '(q, sr2) a
--- localAG :: forall p p' q' q f sr1 sr2 a. (p -> p') -> IProg f (StateAG :++: IVoid) '(p', sr1) '(q', sr2) a -> IProg f StateAG '(p, sr1) '(p, sr2) a
--- localAG ::
---   (p -> p')
---   -> IProg f (StateAG :++: f2) '(p', sr1) '(qout, sr2) a
---   -> IProg f (StateAG :++: f2) '(p, sr1) '(p, sr2) a
-localAG ::
+localAG' ::
   (p1 -> p2)
-  -> IProg (StateA :+: f) (StateAG :++: g) '(p2, sr1) '(q2, sr2) a
-  -> IProg (StateA :+: f) (StateAG :++: g) '(p1, sr1) '(p1, sr2) a
-localAG f act = Scope (SInl $ LocalAG f) act emptyCont
+  -> IProg (StateA :+: f) StateAG '(p2, sr1) '(q2, sr2) a
+  -> IProg (StateA :+: f) StateAG '(p1, sr1) '(p1, sr2) a
+localAG' f act = Scope (LocalAG f) act emptyCont
 
 type StateAG :: forall k.
   k -> k -> k -> k -> Type -> Type -> Type
 data StateAG p p' q' q x x' where
   LocalAG :: (p -> p') ->
-    StateAG p p' q' p x x
+    StateAG '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x
