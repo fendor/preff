@@ -37,7 +37,7 @@ data IProg f g p q a where
     IProg f g p r a
   Scope ::
     g (IProg f g) p p' q' q x x' ->
-    IProg f g p' q' x ->
+    -- IProg f g p' q' x ->
     IKleisliTupled (IProg f g) '(q, x') '(r, a) ->
     -- (x' -> IProg f g q r a) ->
     IProg f g p r a
@@ -45,18 +45,18 @@ data IProg f g p q a where
 instance Functor (IProg f g p q) where
   fmap f (Pure a) = Pure $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (Scope op prog k) = Scope op prog (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (Scope op k) = Scope op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
 instance IFunctor (IProg f g) where
   imap f (Pure a) = Pure $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (Scope op prog k) = Scope op prog (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
 instance IApplicative (IProg f g) where
   pure = Pure
   (Pure f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  Scope fop prog k' <*> k = Scope fop prog (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
 instance IMonad (IProg f g) where
   return :: a -> IProg f g i i a
@@ -65,7 +65,7 @@ instance IMonad (IProg f g) where
   (>>=) :: IProg f g i j a -> (a -> IProg f g j k b) -> IProg f g i k b
   (Pure a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (Scope g c k) >>= f = Scope g c (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -145,7 +145,7 @@ data IVoid m p p' q' q x x'
 runI :: IProg IIdentity IVoid p q a -> a
 runI (Pure a) = a
 runI (Impure cmd k) = runI $ runIKleisliTupled k (runIdentity cmd)
-runI (Scope _ _ _) = error "Impossible"
+runI (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners

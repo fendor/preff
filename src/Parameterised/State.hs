@@ -20,9 +20,9 @@ data StateF p q x where
     t ->
     StateF p p ()
 
-data StateG p p' q' q x x' where
-  Fork :: (AcceptableList p1 q1 p2) => StateG p1 p2 q2 q1 a (Future a)
-  Finish :: StateG p p q p a a
+data StateG m p p' q' q x x' where
+  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> StateG m p1 p2 q2 q1 a (Future a)
+  Finish :: m p2 q2 a -> StateG m p p q p a a
 
 type Token :: Type -> Nat -> Type
 newtype Token t n = Token ()
@@ -35,9 +35,9 @@ alloc a = Impure (Alloc a) emptyCont
 
 get a = Impure (Get a) emptyCont
 
-fork s = Scope Fork s emptyCont
+fork s = Scope (Fork s) emptyCont
 
-finish s = Scope Finish s emptyCont
+finish s = Scope (Finish s) emptyCont
 
 data StateA p q a where
   PutA :: x -> StateA p x ()
@@ -98,8 +98,8 @@ runStateAIG _ (Impure (OInl (PutA q)) k) =
   runStateAIG q (runIKleisliTupled k ())
 runStateAIG p (Impure (OInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runStateAIG p (runIKleisliTupled k x)
-runStateAIG p (Scope (LocalAG f) act k) = Ix.do
-  (x, _q) <- runStateAIG (f p) act
+runStateAIG p (Scope (LocalAG f m) k) = Ix.do
+  (x, _q) <- runStateAIG (f p) m
   runStateAIG p (runIKleisliTupled k x)
 
 runStateAI ::
@@ -113,17 +113,17 @@ runStateAI _ (Impure (OInl (PutA q)) k) =
   runStateAI q (runIKleisliTupled k ())
 runStateAI p (Impure (OInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
-runStateAI _p (Scope _ _ _) = error "GHC is not exhaustive"
+runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
 
 localAG' ::
   (p1 -> p2)
   -> IProg (StateA :+: f) StateAG '(p2, sr1) '(q2, sr2) a
   -> IProg (StateA :+: f) StateAG '(p1, sr1) '(p1, sr2) a
-localAG' f act = Scope (LocalAG f) act emptyCont
+localAG' f act = Scope (LocalAG f act) emptyCont
 
 type StateAG :: forall k.
   (k -> k -> Type -> Type) ->
   k -> k -> k -> k -> Type -> Type -> Type
 data StateAG m p p' q' q x x' where
   LocalAG :: (p -> p') ->
-    m p' q' x -> StateAG '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x
+    m '(p', sr1) '(q', sr2) x -> StateAG m '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x

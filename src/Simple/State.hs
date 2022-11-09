@@ -8,8 +8,8 @@ data StateS s p q x where
   PutS :: s -> StateS s p p ()
   GetS :: StateS s p p s
 
-data StateG s p p' q' q x' x where
-  LocalG :: (s -> s) -> StateG s p p' q' q x x
+data StateG s m p p' q' q x x' where
+  LocalG :: (s -> s) -> m p' q' x -> StateG s m p p' q' q x x
 
 getS :: IProg (StateS s) g p p s
 getS = Impure GetS emptyCont
@@ -18,13 +18,13 @@ putS :: s -> IProg (StateS s) g p p ()
 putS s = Impure (PutS s) emptyCont
 
 localG :: (s -> s) -> IProg f (StateG s) q r a -> IProg f (StateG s) p r a
-localG f prog = Scope (LocalG f) prog return
+localG f prog = Scope (LocalG f prog) emptyCont
 
 runState :: s -> IProg (StateS s) (StateG s) p q a -> (s, a)
 runState s (Pure a) = (s, a)
 runState s (Impure GetS k) = runState s (runIKleisliTupled k s)
 runState _s (Impure (PutS s') k) = runState s' (runIKleisliTupled k ())
-runState s (Scope (LocalG f) prog k) = runState s (k x)
+runState s (Scope (LocalG f prog) k) = runState s (runIKleisliTupled k x)
  where
   (_, x) = runState (f s) prog
 

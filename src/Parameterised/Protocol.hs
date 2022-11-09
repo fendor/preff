@@ -28,14 +28,17 @@ data Protocol p q r where
     Sel1 :: Protocol (a :| b) a ()
     Sel2 :: Protocol (a :| b) b ()
 
-data ProtocolG p p' q' q x x' where
-    Offer :: ProtocolG p p' q' q x x'
+data ProtocolG m p p' q' q x x' where
+    Offer ::
+      m '(a, sr1) '(c, sr2) x ->
+      m '(b, sr1) '(c, sr2) x ->
+      ProtocolG m '((a :& b), sr1) '((a :& b), sr1) '(c, sr2) '(c, sr2) x x
 
 type family Dual proc where
   Dual (a :! p) = a :? Dual p
   Dual (a :? p) = a :! Dual p
   Dual (a :| b) = Dual a :& Dual b
-  Dual (a :& b) = Dual a :| Dual a
+  Dual (a :& b) = Dual a :| Dual b
   Dual End = End
 
 send :: a -> IProg (Protocol :+: IIdentity) ProtocolG '(a :! p, sr) '(p, sr) ()
@@ -50,7 +53,7 @@ sel1 = Impure (OInl Sel1)  (IKleisliTupled Utils.return)
 sel2 :: IProg (Protocol :+: IIdentity) ProtocolG '(a :| b, sr) '(b, sr) ()
 sel2 = Impure (OInl Sel2)  (IKleisliTupled Utils.return)
 
-offer s1 s2 = Scope Offer s1 emptyCont
+offer s1 s2 = Scope (Offer s1 s2) emptyCont
 
 -- simpleProtocol :: Sem (Protocol :+: IIdentity) '(p, sr) '(Int :! String :? p, sr) String
 simpleServer ::
@@ -76,11 +79,34 @@ simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
+choice :: forall {k1} {k2} {p} {b :: k2} {sr :: k1}.
+  IProg
+    (Protocol :+: IIdentity)
+    ProtocolG
+    '(Int :! ((Int :? p) :| b), sr)
+    '(p, sr)
+    Int
 choice = Ix.do
   send @Int 5
   sel1
   n <- recv @Int
   Ix.return n
+
+andOffer :: forall k p (sr :: k).
+  IProg
+    (Protocol :+: IIdentity)
+    ProtocolG
+    '(Int :? ((Int :! End) :& (Int :! End)), sr)
+    '(End, sr)
+    ()
+andOffer = Ix.do
+  n <- recv @Int
+  offer
+    (Ix.do
+      send @Int n)
+    (Ix.do
+      send @Int n)
+  Ix.return ()
 
 type PingPong p = Int :? p
 
@@ -120,10 +146,16 @@ choice2 = Ix.do
 --   -- connect sl@(Op (OInl _) _) (Op (OInr op) k2) = Op op $ \x -> connect sl (runIKleisliTupled k2 x)
 --   connect _ _ = undefined
 
-connect :: Dual p1 ~ q1 =>
+connect :: (Dual p1 ~ p2, Dual p2 ~ p1) =>
   IProg (Protocol :+: IIdentity) ProtocolG '(p1, ()) '(End, ()) a ->
-  IProg (Protocol :+: IIdentity) ProtocolG '(q1, ()) '(End, ()) b ->
+  IProg (Protocol :+: IIdentity) ProtocolG '(p2, ()) '(End, ()) b ->
   (a, b)
 connect (Pure x) (Pure y) = (x, y)
 connect (Impure (OInl Recv) k1)     (Impure (OInl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect (Impure (OInl (Send a)) k1) (Impure (OInl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect (Impure (OInl Sel1) k1)     (Scope (Offer act _) k2) = undefined
+  connect (runIKleisliTupled k1 ()) act
+connect (Impure (OInl Sel2) k1)     (Scope (Offer act _) k2) = undefined
+connect (Scope (Offer act _) k1)    (Impure (OInl Sel1) k2) = undefined
+connect (Scope (Offer act _) k1)    (Impure (OInl Sel2) k2) = undefined
+connect _                           _                       = error "Protocol.connect: internal tree error"

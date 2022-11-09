@@ -60,14 +60,14 @@ data Array p q x where
     IO a ->
     Array p p a
 
-data Thread p p' q' q x x' where
-  AFork :: (AcceptableList p1 q1 p2) => Thread p1 p2 q2 q1 a (Future a)
-  AFinish :: Thread p p q p () ()
+data Thread m p p' q' q x x' where
+  AFork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> Thread m p1 p2 q2 q1 a (Future a)
+  AFinish :: m p q () -> Thread m p p q p () ()
 
 afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
-afork s = Scope AFork s emptyCont
+afork s = Scope (AFork s) emptyCont
 
-afinish s = Scope AFinish s emptyCont
+afinish s = Scope (AFinish s) emptyCont
 
 join i1 i2 = Impure (Join i1 i2) emptyCont
 
@@ -162,7 +162,7 @@ runArraysH (Impure (Split n i) c) =
                    in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
 runArraysH (Impure (InjectIO a) c) =
   a P.>>= (runArraysH . runIKleisliTupled c)
-runArraysH (Scope AFork c a) =
+runArraysH (Scope (AFork c) a) =
   newEmptyTMVarIO
     P.>>= ( \var {-forkIO ( -} ->
               runArraysH c
@@ -171,6 +171,6 @@ runArraysH (Scope AFork c a) =
                   P.>> runArraysH (runIKleisliTupled a Future)
                 P.>>= (\result -> P.return (var : result))
           )
-runArraysH (Scope AFinish c a) =
+runArraysH (Scope (AFinish c) a) =
   runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
 runArraysH _ = undefined
