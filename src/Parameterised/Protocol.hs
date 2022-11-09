@@ -4,6 +4,7 @@ module Parameterised.Protocol where
 import Data.Kind
 import Utils
 import qualified Utils as Ix
+import Unsafe.Coerce
 
 -- type End :: Type
 data End
@@ -92,7 +93,7 @@ choice = Ix.do
   n <- recv @Int
   Ix.return n
 
-andOffer :: forall k p (sr :: k).
+andOffer :: forall k (sr :: k).
   IProg
     (Protocol :+: IIdentity)
     ProtocolG
@@ -146,16 +147,44 @@ choice2 = Ix.do
 --   -- connect sl@(Op (OInl _) _) (Op (OInr op) k2) = Op op $ \x -> connect sl (runIKleisliTupled k2 x)
 --   connect _ _ = undefined
 
-connect :: (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  IProg (Protocol :+: IIdentity) ProtocolG '(p1, ()) '(End, ()) a ->
-  IProg (Protocol :+: IIdentity) ProtocolG '(p2, ()) '(End, ()) b ->
+connect :: forall p1 p2 sr a b.
+  (Dual p1 ~ p2, Dual p2 ~ p1) =>
+  IProg (Protocol :+: IIdentity) ProtocolG '(p1, sr) '(End, sr) a ->
+  IProg (Protocol :+: IIdentity) ProtocolG '(p2, sr) '(End, sr) b ->
   (a, b)
 connect (Pure x) (Pure y) = (x, y)
 connect (Impure (OInl Recv) k1)     (Impure (OInl (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect (Impure (OInl (Send a)) k1) (Impure (OInl Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
-connect (Impure (OInl Sel1) k1)     (Scope (Offer act _) k2) = undefined
-  connect (runIKleisliTupled k1 ()) act
-connect (Impure (OInl Sel2) k1)     (Scope (Offer act _) k2) = undefined
-connect (Scope (Offer act _) k1)    (Impure (OInl Sel1) k2) = undefined
-connect (Scope (Offer act _) k1)    (Impure (OInl Sel2) k2) = undefined
-connect _                           _                       = error "Protocol.connect: internal tree error"
+connect (Impure (OInl Sel1) k1)     (Scope (Offer act _) k2) =
+  connect act1 act2
+  where
+    act1 = runIKleisliTupled k1 ()
+    act2 = unsafeCoerce act
+connect (Impure (OInl Sel2) k1)     (Scope (Offer act _) k2) =
+  connect act1 act2
+  where
+    act1 = runIKleisliTupled k1 ()
+    act2 = unsafeCoerce act
+connect (Scope (Offer act _) k1)    (Impure (OInl Sel1) k2) =
+  connect act1 act2
+  where
+    act1 = unsafeCoerce act
+    act2 = runIKleisliTupled k2 ()
+connect (Scope (Offer _ act) k1)    (Impure (OInl Sel2) k2) =
+  connect act1 act2
+  where
+    act1 = unsafeCoerce act
+    act2 = runIKleisliTupled k2 ()
+connect (Pure _) (Impure _ _) = error "Procol.connect: internal tree error"
+connect (Pure _) (Scope _ _) = error "Procol.connect: internal tree error"
+connect (Impure (OInr _) _) _ = error "Procol.connect: internal tree error"
+connect (Impure (OInl Recv) _) (Scope _ _) = error "Procol.connect: internal tree error"
+connect (Scope (Offer _ _) _) (Scope _ _) = error "Protocol.connect: internal tree error"
+connect (Scope (Offer _ _) _) (Impure (OInr _) _) = error "Protocol.connect: internal tree error"
+connect (Impure (OInl (Send _)) _) (Scope _ _) = error "Protocol.connect: internal tree error"
+connect (Impure (OInl (Send _)) _) (Impure (OInr _) _) = error "Protocol.connect: internal tree error"
+connect (Impure (OInl Sel1) _) (Impure _ _) = error "Protocol.conncet: internal tree error"
+connect (Impure (OInl Sel2) _) (Impure _ _) = error "Protocol.conncet: internal tree error"
+connect (Impure (OInl Recv) _) (Impure (OInr _) _) = error "Protocol.conncet: internal tree error"
+-- connect _                           _                       = error "Protocol.connect: internal tree error"
+
