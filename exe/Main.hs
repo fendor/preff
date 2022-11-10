@@ -2,11 +2,11 @@
 {-# LANGUAGE RebindableSyntax #-}
 module Main where
 
-import qualified Arrays
+-- import qualified Arrays
 import Prelude hiding (Monad(..))
 
 main :: IO ()
-main = do
+main = pure ()
     -- Arrays.example20
-    Arrays.example6
+    -- Arrays.example6
     -- Arrays.example21

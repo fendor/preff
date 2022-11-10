@@ -33,13 +33,10 @@ common exts
     TypeFamilies
     TypeOperators
 
--- Type system
--- Type Families and MPTC
--- Programming Convenience
 library
   import:           warnings, exts
   exposed-modules:
-    Arrays
+    -- Arrays
     Parameterised.Array
     Parameterised.Protocol
     Parameterised.State

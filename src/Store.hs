@@ -5,7 +5,7 @@
 
 module Store where
 
-import Utils hiding (run)
+import Utils
 import Prelude hiding (Monad (..), (=<<))
 import Parameterised.State
 
