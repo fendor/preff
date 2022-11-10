@@ -100,16 +100,5 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 
-embedIO1 :: IO a -> IProg (Op (IIO : effs)) IVoid (u : s) (u: s) a
+embedIO1 :: IO a -> IProg (Op (IIO : effs)) IVoid '(u, s) '(u, s) a
 embedIO1 io = Impure (OHere $ RunIO io) emptyCont
-
-data Phantom a = Phantom Int
-
-t1 :: Phantom (a:b:c) -> Phantom (a:b:c)
-t1 = undefined
-
-
-m1 :: (Phantom (a:rest) -> Phantom (a:rest)) -> Phantom (a:rest)
-m1 = undefined
-
-e1 = m1 t1

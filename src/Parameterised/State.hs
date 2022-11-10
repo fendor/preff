@@ -43,22 +43,22 @@ data StateA p q a where
   PutA :: x -> StateA p x ()
   GetA :: StateA p p p
 
-putAI :: p -> IProg (Op (StateA:eff)) g (q: sr) (p: sr) ()
+putAI :: p -> IProg (Op (StateA:eff)) g '(q, sr) '(p, sr) ()
 putAI p = Impure (OHere $ PutA p) emptyCont
 
-getAI :: IProg (Op (StateA:eff)) g (p: sr) (p: sr) p
+getAI :: IProg (Op (StateA:eff)) g '(p, sr) '(p, sr) p
 getAI = Impure (OHere GetA) emptyCont
 
-getAI2 :: IProg (Op (f1:StateA:eff)) g (sl: p: sr) (sl: p: sr) p
+getAI2 :: IProg (Op (f1:StateA:eff)) g '(sl, '(p, sr)) '(sl, '(p, sr)) p
 getAI2 = Impure (OThere $ OHere GetA) emptyCont
 
 -- putAI2 :: IProg (f :+: StateA :+: eff) g '(sl, '(p, sr)) '(sl, '(p, sr)) p
 putAI2 ::
   p
-  -> IProg (Op (f1:StateA:f2)) g (sl: q : sr) (sl: p: sr) ()
+  -> IProg (Op (f1:StateA:f2)) g '(sl, '(q, sr)) '(sl, '(p, sr)) ()
 putAI2 x = Impure (OThere $ OHere $ PutA x) emptyCont
 
-stateCIExp :: IProg ( Op (StateA:StateA:eff)) StateAG [String, (), ()] [Int, String, ()] ()
+stateCIExp :: IProg ( Op (StateA:StateA:eff)) StateAG '(String, '((), ())) '(Int, '(String, ())) ()
 stateCIExp = Ix.do
   s <- getAI
   _val <- localAG' (const $ Just "") $ Ix.do
@@ -68,20 +68,17 @@ stateCIExp = Ix.do
 
 localAG' ::
   (p1 -> p2)
-  -> IProg (Op (StateA:eff)) StateAG (p2 : sr1) (q2 : sr2) a
-  -> IProg (Op (StateA:eff)) StateAG (p1 : sr1) (p1 : sr2) a
+  -> IProg (Op (StateA:eff)) StateAG '(p2, sr1) '(q2, sr2) a
+  -> IProg (Op (StateA:eff)) StateAG '(p1, sr1) '(p1, sr2) a
 localAG' f act = Scope (LocalAG f act) emptyCont
 
-type StateAG ::
-  ([Type] -> [Type] -> Type -> Type) ->
-  [Type] -> [Type] -> [Type] -> [Type] -> Type -> Type -> Type
 data StateAG m p p' q' q x x' where
   LocalAG :: (p -> p') ->
-    m (p': sr1) (q': sr2) x -> StateAG m (p: sr1) (p': sr1) (q': sr2) (p: sr2) x x
+    m '(p', sr1) '(q, sr2) x -> StateAG m '(p, sr1) '(p', sr1) '(q', sr2) '(p, sr2) x x
 
 runStateAIG ::
   p ->
-  IProg (Op (StateA:eff)) StateAG (p: sr1) (q: sr2) a ->
+  IProg (Op (StateA:eff)) StateAG '(p, sr1) '(q, sr2) a ->
   IProg (Op eff) IVoid sr1 sr2 (a, q)
 runStateAIG p (Pure x) = Ix.return (x, p)
 runStateAIG p (Impure (OHere GetA) k) =
@@ -96,7 +93,7 @@ runStateAIG p (Scope (LocalAG f m) k) = Ix.do
 
 runStateAI ::
   p ->
-  IProg (Op (StateA:eff)) IVoid (p: sr1) (q: sr2) a ->
+  IProg (Op (StateA:eff)) IVoid '(p, sr1) '(q, sr2) a ->
   IProg (Op eff) IVoid sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (OHere GetA) k) =
