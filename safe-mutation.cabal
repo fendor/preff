@@ -40,6 +40,7 @@ library
   import:           warnings, exts
   exposed-modules:
     Arrays
+    OpenUnion
     Parameterised.Array
     Parameterised.Protocol
     Parameterised.State

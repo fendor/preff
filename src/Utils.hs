@@ -6,7 +6,6 @@ module Utils where
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
-import qualified Prelude as P
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -151,60 +150,14 @@ runI (Scope _ _) = error "Impossible"
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
 
-
-instance IMonad (Sem f) where
-  return :: a -> Sem f i i a
-  return = Value
-
-  (>>=) :: Sem f i j a -> (a -> Sem f j k b) -> Sem f i k b
-  (Value a) >>= f = f a
-  (Op o a) >>= f = Op o (a |> IKleisliTupled f)
-
-type Sem ::
-  (k -> k -> Type -> Type) ->
-  k ->
-  k ->
-  Type ->
-  Type
-data Sem f p q a where
-  Value :: a -> Sem f p p a
-  Op ::
-    f p q x ->
-    IKleisliTupled (Sem f) '(q, x) '(r, a) ->
-    -- x -> Sem f q r a
-    Sem f p r a
-
-runPure
-  :: (forall j p b. f j p b -> b)
-  -> Sem (f :+: fs) '(i, is) '(o, os) a
-  -> Sem fs is os a
-runPure _ (Value a) = Value a
-runPure f (Op (OInr cmd) q) = Op cmd k
-  where k = IKleisliTupled $ \a -> runPure f $ runIKleisliTupled q a
-runPure f (Op (OInl cmd) q) = runPure f $ runIKleisliTupled q (f cmd)
-
 newtype IIdentity p q a = IIdentity a
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
 
-run :: Sem IIdentity p q a -> a
-run (Value a) = a
-run (Op cmd k) = run $ runIKleisliTupled k (runIdentity cmd)
-
 data IIO p q a where
   RunIO :: IO a -> IIO p p a
 
-runIO :: Sem IIO p q a -> IO a
-runIO (Value a) = P.pure a
-runIO (Op (RunIO io) k) = io P.>>= runIO . runIKleisliTupled k
-
--- TODO: not general enough
-embedIO :: IO a -> Sem (f :+: IIO) '(p1, q1) '(p1, q1) a
-embedIO act = Op (OInr $ RunIO act) (IKleisliTupled return)
-
-embedIO1 :: IO a -> Sem IIO q q a
-embedIO1 act = Op (RunIO act) (IKleisliTupled return)
 -- ------------------------------------------------
 -- Parametric Effect monad
 -- ------------------------------------------------
