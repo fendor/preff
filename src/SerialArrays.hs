@@ -29,7 +29,7 @@ length a = Impure (OHere $ Length a) $ IKleisliTupled return
 
 read a b = Impure (OHere $ Read a b) $ IKleisliTupled return
 
-runSerialArrays :: IProg (Op (Array: effs)) IVoid (p : ps) (q : qs) a -> IProg (Op (IIO : effs)) IVoid (u: ps) (u: qs) a
+runSerialArrays :: IProg (Array: effs) IVoid (p : ps) (q : qs) a -> IProg (IIO : effs) IVoid (u: ps) (u: qs) a
 runSerialArrays (Pure a) = return a
 runSerialArrays (Scope _ _) = error "Test"
 -- _ :: IProg (Op (Array: IIO: effs)) IVoid (p: sr2) (q: u: t) a
@@ -78,5 +78,5 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 
-embedIO1 :: IO a -> IProg (Op (IIO: effs)) IVoid (u: ps) (u: qs) a
+embedIO1 :: IO a -> IProg (IIO: effs) IVoid (u: ps) (u: ps) a
 embedIO1 io = Impure (OHere $ RunIO io) emptyCont

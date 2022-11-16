@@ -11,6 +11,7 @@ import Unsafe.Coerce (unsafeCoerce)
 import Utils
 import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
+import Data.Kind
 
 data ValueType where
   Actual :: ValueType
@@ -60,30 +61,35 @@ data Array p q x where
     IO a ->
     Array p p a
 
+-- type Thread :: forall k .
+--   (k -> k -> Type -> Type) ->
+--    k -> k -> k -> k -> Type -> Type ->
+--   Type
+
 data Thread m p p' q' q x x' where
   AFork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> Thread m p1 p2 q2 q1 a (Future a)
   AFinish :: m p q () -> Thread m p p q p () ()
 
-afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
+-- afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
 afork s = Scope (AFork s) emptyCont
 
 afinish s = Scope (AFinish s) emptyCont
 
-join i1 i2 = Impure (Join i1 i2) emptyCont
+join i1 i2 = Impure (OHere $ Join i1 i2) emptyCont
 
-write a b c = Impure (Write a b c) emptyCont
+write a b c = Impure (OHere $ Write a b c) emptyCont
 
-malloc a b = Impure (Malloc a b) emptyCont
+malloc a b = Impure (OHere $ Malloc a b) emptyCont
 
-slice a b = Impure (Split a b) emptyCont
+slice a b = Impure (OHere $ Split a b) emptyCont
 
-length a = Impure (Length a) emptyCont
+length a = Impure (OHere $ Length a) emptyCont
 
-read a b = Impure (Read a b) emptyCont
+read a b = Impure (OHere $ Read a b) emptyCont
 
-wait a = Impure (Wait a) emptyCont
+wait a = Impure (OHere $ Wait a) emptyCont
 
-injectIO a = Impure (InjectIO a) emptyCont
+injectIO a = Impure (OHere $ InjectIO a) emptyCont
 
 -- ----------------------------------------------------------
 -- IO Runner for parallel arrays
@@ -116,11 +122,11 @@ runArrays ::
   IO ()
 runArrays prog = runArraysH prog P.>> P.return ()
 
-runArraysH ::
+runArraysH :: forall (p :: [AccessLevel]) (q :: [AccessLevel]) a.
   IProg '[Array] Thread '[p] '[q] a ->
   IO [TMVar ()]
 runArraysH (Pure _a) = P.return []
-runArraysH (Impure (Malloc i (a :: b)) c) =
+runArraysH (Impure (OHere (Malloc i (a :: b))) c) =
   let upper = i - 1
    in let bounds = (0, upper)
        in (IO.newArray bounds a :: IO (IO.IOArray Int b))
@@ -128,7 +134,7 @@ runArraysH (Impure (Malloc i (a :: b)) c) =
                       let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
                        in runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
                   )
-runArraysH (Impure (Read n i) c) =
+runArraysH (Impure (OHere (Read n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -136,7 +142,7 @@ runArraysH (Impure (Read n i) c) =
             else
               IO.readArray (arr :: IO.IOArray Int Any) offset
                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
-runArraysH (Impure (Write n i (a :: b)) c) =
+runArraysH (Impure (OHere (Write n i (a :: b))) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -144,14 +150,14 @@ runArraysH (Impure (Write n i (a :: b)) c) =
             else
               IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
-runArraysH (Impure (Length n) c) =
+runArraysH (Impure (OHere (Length n)) c) =
   let ((lower, upper), _arr) = unsafeUncoverA n
    in if upper - lower + 1 < 0
         then error "Should not be here"
         else runArraysH (runIKleisliTupled c (upper - lower + 1))
-runArraysH (Impure (Join _a _b) c) =
+runArraysH (Impure (OHere (Join _a _b)) c) =
   runArraysH (runIKleisliTupled c ())
-runArraysH (Impure (Split n i) c) =
+runArraysH (Impure (OHere (Split n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -160,7 +166,7 @@ runArraysH (Impure (Split n i) c) =
               let n1 = (lower, offset)
                in let n2 = (offset + 1, upper)
                    in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
-runArraysH (Impure (InjectIO a) c) =
+runArraysH (Impure (OHere (InjectIO a)) c) =
   a P.>>= (runArraysH . runIKleisliTupled c)
 runArraysH (Scope (AFork c) a) =
   newEmptyTMVarIO
@@ -172,5 +178,6 @@ runArraysH (Scope (AFork c) a) =
                 P.>>= (\result -> P.return (var : result))
           )
 runArraysH (Scope (AFinish c) a) =
-  runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
+  undefined
+  -- runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
 runArraysH _ = undefined
