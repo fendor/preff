@@ -20,17 +20,17 @@ class IHFunctor sig => Syntax sig where
   iemap :: (IMonad m) => (m p q a -> m p q b) -> (sig (m p q) a -> sig (m p q) b)
   iweave :: (IMonad m, IMonad n, Functor c) => c () -> (forall x . c (m p q x) -> n p q (c x)) -> (sig (m p q) a -> sig (n p q) (c a))
 
-type IProg :: forall k.
-  (k -> k -> Type -> Type) ->
-  ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
-  k ->
-  k ->
-  Type ->
-  Type
+-- type IProg :: forall k.
+--   (k -> k -> Type -> Type) ->
+--   ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
+--   k ->
+--   k ->
+--   Type ->
+--   Type
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
   Impure ::
-    f p q x ->
+    Op f p q x ->
     IKleisliTupled (IProg f g) '(q, x) '(r, a) ->
     -- (x -> IProg f g q r a)
     IProg f g p r a
@@ -97,21 +97,21 @@ transformKleisli ::
   -> IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
-type Op :: forall sl sr k.
-  [k -> k -> Type -> Type] ->
-  (sl, sr) ->
-  (sl, sr) ->
-  Type ->
-  Type
+-- type Op :: forall sl sr k.
+--   [k -> k -> Type -> Type] ->
+--   (sl, sr) ->
+--   (sl, sr) ->
+--   Type ->
+--   Type
 data Op effs t1 t2 x where
   OHere ::
     forall x f1 effs sl1 sl2 sr .
     f1 sl1 sl2 x ->
-    Op (f1 : effs) '(sl1, sr) '(sl2, sr) x
+    Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
   OThere ::
     forall x eff effs sr1 sr2 sl .
     Op effs sr1 sr2 x ->
-    Op (eff : effs) '(sl, sr1) '(sl, sr2) x
+    Op (eff : effs) (sl ': sr1) (sl ': sr2) x
 
 infixr 5 :++:
 type (:++:) ::
@@ -144,9 +144,10 @@ type IVoid :: forall k.
   k -> k -> k -> k -> Type -> Type -> Type
 data IVoid m p p' q' q x x'
 
-runI :: IProg IIdentity IVoid p q a -> a
+runI :: IProg '[IIdentity] IVoid p q a -> a
 runI (Pure a) = a
-runI (Impure cmd k) = runI $ runIKleisliTupled k (runIdentity cmd)
+runI (Impure (OHere cmd) k) = runI $ runIKleisliTupled k (runIdentity cmd)
+runI (Impure (OThere _) _k) = error "Impossible"
 runI (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------

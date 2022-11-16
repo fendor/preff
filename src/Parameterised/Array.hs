@@ -112,12 +112,12 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 
 runArrays ::
-  IProg Array Thread '[] q a ->
+  IProg '[Array] Thread '[p] '[q] a ->
   IO ()
 runArrays prog = runArraysH prog P.>> P.return ()
 
 runArraysH ::
-  IProg Array Thread p q a ->
+  IProg '[Array] Thread '[p] '[q] a ->
   IO [TMVar ()]
 runArraysH (Pure _a) = P.return []
 runArraysH (Impure (Malloc i (a :: b)) c) =

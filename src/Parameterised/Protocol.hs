@@ -30,9 +30,9 @@ data Protocol p q r where
 
 data ProtocolG m p p' q' q x x' where
     Offer ::
-      m '(a, sr1) '(c, sr2) x ->
-      m '(b, sr1) '(c, sr2) x ->
-      ProtocolG m '(a :& b, sr1) '(a :& b, sr1) '(c, sr2) '(c, sr2) x x
+      m (a: sr1) (c: sr2) x ->
+      m (b: sr1) (c: sr2) x ->
+      ProtocolG m ((a :& b) : sr1) ((a :& b): sr1) (c: sr2) (c: sr2) x x
 
 type family Dual proc where
   Dual (a :! p) = a :? Dual p
@@ -43,28 +43,28 @@ type family Dual proc where
 
 send :: forall a effs g p sr.
   a ->
-  IProg (Op (Protocol : effs)) g '(a :! p, sr) '(p, sr) ()
+  IProg (Protocol : effs) g ((a :! p) : sr) (p : sr) ()
 send a = Impure (OHere (Send a)) (IKleisliTupled Utils.return)
 
 -- recv :: IProg (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv :: forall a p effs g sr .
-  IProg (Op (Protocol : effs)) g '(a :? p, sr) '(p, sr) a
+  IProg (Protocol : effs) g ((a :? p) : sr) (p: sr) a
 recv = Impure (OHere Recv)  (IKleisliTupled Utils.return)
 
 -- sel1 :: IProg (Protocol :+: IIdentity) ProtocolG '(a :| b, sr) '(a, sr) ()
 sel1 ::
-  IProg (Op (Protocol : effs)) g '(sl2 :| b, sr) '(sl2, sr) ()
+  IProg (Protocol : effs) g ((sl2 :| b) : sr) (sl2: sr) ()
 sel1 = Impure (OHere Sel1)  (IKleisliTupled Utils.return)
 
 -- sel2 :: IProg (Protocol :+: IIdentity) ProtocolG '(a :| b, sr) '(b, sr) ()
 sel2 ::
-  IProg (Op (Protocol : effs)) g '(a :| sl2, sr) '(sl2, sr) ()
+  IProg (Protocol : effs) g ((a :| sl2): sr) (sl2: sr) ()
 sel2 = Impure (OHere Sel2)  (IKleisliTupled Utils.return)
 
 offer ::
-  IProg f ProtocolG '(a1, sr1) '(c, sr2) a2 ->
-  IProg f ProtocolG '(b, sr1) '(c, sr2) a2 ->
-  IProg f ProtocolG '(a1 :& b, sr1) '(c, sr2) a2
+  IProg f ProtocolG ( a: sr1) (c: sr2) a2 ->
+  IProg f ProtocolG ( b : sr1) (c: sr2) a2 ->
+  IProg f ProtocolG ((a :& b): sr1) (c: sr2) a2
 offer s1 s2 = Scope (Offer s1 s2) emptyCont
 
 simpleServer = Ix.do
@@ -108,8 +108,8 @@ choice2 = Ix.do
 
 connect :: forall p1 p2 srp1 srp2 srq1 srq2 a b.
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  IProg (Op [Protocol, IIdentity]) ProtocolG '(p1, srp1) '(End, srq1) a ->
-  IProg (Op [Protocol, IIdentity]) ProtocolG '(p2, srp2) '(End, srq2) b ->
+  IProg [Protocol, IIdentity] ProtocolG (p1: srp1) (End : srq1) a ->
+  IProg [Protocol, IIdentity] ProtocolG (p2: srp2) (End : srq2) b ->
   (a, b)
 connect (Pure x) (Pure y) = (x, y)
 connect (Impure (OHere Recv) k1)     (Impure (OHere (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
