@@ -3,6 +3,7 @@
 
 module Utils where
 
+import qualified Prelude as P
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
@@ -97,12 +98,12 @@ transformKleisli ::
   -> IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
--- type Op :: forall sl sr k.
---   [k -> k -> Type -> Type] ->
---   (sl, sr) ->
---   (sl, sr) ->
---   Type ->
---   Type
+type Op :: forall k.
+  [k -> k -> Type -> Type] ->
+  [k] ->
+  [k] ->
+  Type ->
+  Type
 data Op effs t1 t2 x where
   OHere ::
     forall x f1 effs sl1 sl2 sr .
@@ -162,6 +163,12 @@ runIdentity (IIdentity a) = a
 type IIO :: forall k. k -> k -> Type -> Type
 data IIO p q a where
   RunIO :: IO a -> IIO p p a
+
+runIO :: IProg '[IIO] IVoid p q a -> IO a
+runIO (Pure a) = P.pure a
+runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisliTupled k x
+runIO (Impure (OThere _) _k) = error "Impossible"
+runIO (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Parametric Effect monad

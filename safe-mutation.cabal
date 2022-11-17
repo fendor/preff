@@ -36,7 +36,7 @@ common exts
 library
   import:           warnings, exts
   exposed-modules:
-    -- Arrays
+    Arrays
     Parameterised.Array
     Parameterised.Protocol
     Parameterised.State
