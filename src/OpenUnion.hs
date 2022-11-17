@@ -51,7 +51,7 @@
 -- type t in the list r as the TRep. (We will need UnsafeCoerce then).
 --
 -- The interface is the same as of other OpenUnionType.hs
-module Data.OpenUnion ( Union
+module OpenUnion ( Union
                       , inj
                       , prj, pattern U0'
                       , decomp, pattern U0, pattern U1

@@ -43,29 +43,17 @@ data StateA p q a where
   PutA :: x -> StateA p x ()
   GetA :: StateA p p p
 
-putA a = Op (OInl $ PutA a) emptyCont
-
-getA = Op (OInl GetA) emptyCont
-
-stateCExp :: Sem (StateA :+: eff) '(String, ()) '(Int, ()) ()
-stateCExp = Ix.do
-  s <- getA
-  putA (read s + 100)
-
-runStateA ::
-  p ->
-  Sem (StateA :+: eff) '(p, sr1) '(q, sr2) a ->
-  Sem eff sr1 sr2 (a, q)
-runStateA p (Value x) = Ix.return (x, p)
-runStateA p (Op (OInl GetA) k) =
-  runStateA p (runIKleisliTupled k p)
-runStateA _ (Op (OInl (PutA q)) k) =
-  runStateA q (runIKleisliTupled k ())
-runStateA p (Op (OInr cmd) k) =
-  Op cmd $ IKleisliTupled $ \x -> runStateA p (runIKleisliTupled k x)
-
 putAI :: p -> IProg (StateA :+: eff) g '(q, sr) '(p, sr) ()
 putAI p = Impure (OInl $ PutA p) emptyCont
+
+putG ::
+  (CMember StateA eff) =>
+  p ->
+  IProg eff geff ps (Modify ind ps p) ()
+putG p = send (PutA p)
+
+inj = undefined
+send act = Impure (inj act) emptyCont
 
 getAI :: IProg (StateA :+: eff) g '(p, sr) '(p, sr) p
 getAI = Impure (OInl GetA) emptyCont

@@ -58,6 +58,8 @@ library
     , random
     , safe-mutation-plugin
     , stm
+    , singletons
+    , singletons-base
 
   -- Directories containing source files.
   hs-source-dirs:   src

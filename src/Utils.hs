@@ -100,10 +100,10 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 infixr 5 :+:
 type (:+:) ::
   forall sl sr.
-  (sl -> sl -> Type -> Type) ->
-  (sr -> sr -> Type -> Type) ->
-  (sl, sr) ->
-  (sl, sr) ->
+  (Type -> Type -> Type -> Type) ->
+  (Type -> Type -> Type -> Type) ->
+  (Type,   Type) ->
+  (Type,   Type) ->
   Type ->
   Type
 data (f1 :+: f2) t1 t2 x where
@@ -114,11 +114,11 @@ infixr 5 :++:
 type (:++:) ::
   forall sl sr.
   (sl -> sl -> sl -> sl -> Type -> Type -> Type) ->
-  (sr -> sr -> sr -> sr -> Type -> Type -> Type) ->
-  (sl, sr) ->
-  (sl, sr) ->
-  (sl, sr) ->
-  (sl, sr) ->
+  (sl -> sl -> sl -> sl -> Type -> Type -> Type) ->
+  (sl, sl) ->
+  (sl, sl) ->
+  (sl, sl) ->
+  (sl, sl) ->
   Type ->
   Type ->
   Type
@@ -176,6 +176,65 @@ class IFunctor f where
 class IFunctor f => IApplicative f where
   pure :: a -> f i i a
   (<*>) :: f i j (a -> b) -> f j r a -> f i r b
+
+-- type FindElem :: forall k . (k -> Type) -> Type -> Constraint
+class FindElem t r where
+  elemNo :: P t r
+
+instance FindElem t '(t, r) where
+  elemNo = P 0
+
+instance {-# OVERLAPPABLE #-} FindElem t r => FindElem t '(t', r) where
+  elemNo = P $ 1 + unP (elemNo :: P t r)
+
+instance TypeError ('Text "Cannot unify effect types." ':$$:
+                    'Text "Unhandled effect: " ':<>: 'ShowType t ':$$:
+                    'Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?")
+  => FindElem t '() where
+  elemNo = error "unreachable"
+
+newtype P t r = P{unP :: Int} deriving Show
+
+type FindEff :: forall sr . Type -> (Type, sr) -> Natural
+type family FindEff t r where
+  FindEff t '(t, r) = 0
+  FindEff t '(t', ()) = TypeError (Text "Not found.")
+  FindEff t '(t', r) = 1 + FindEff t r
+
+class CMember t r where
+  memberNo :: P t r
+  inj :: t p q a -> r p q a
+
+instance s ~ t => CMember t (s :+: r) where
+  memberNo = P 0
+  inj act = OInl act
+
+-- instance {-# OVERLAPPABLE #-} CMember t r => CMember t (t' :+: r) where
+--   memberNo = P $ 1 + unP (memberNo :: P t r)
+
+-- instance TypeError ('Text "Cannot unify effect types." ':$$:
+--                     'Text "Unhandled effect: " ':<>: 'ShowType t ':$$:
+--                     'Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?")
+--   => CMember t  () where
+--   memberNo = error "unreachable"
+
+-- type family IndexOf f xs :: Natural where
+--   IndexOf f (f :+: xs) = 0
+--   IndexOf f (f' :+: f :+: xs) = 1
+--   IndexOf f (f' :+: f1 :+: f2) = 1 + IndexOf' f (f1 :+: f2)
+
+-- type family IndexOf' f xs :: Natural where
+--   IndexOf' f (f :+: xs) = 0
+--   IndexOf' f (f' :+: f :+: xs) = 1
+--   IndexOf' f (f' :+: f1 :+: f2) = 1 + IndexOf f (f1 :+: f2)
+
+-- instance {-# OVERLAPPABLE #-} ((t ~ t'), CMember t r n) => CMember t (t' :+: r) (n + 1) where
+
+type Modify :: forall k sr . Natural -> (k, sr) -> k -> (k, sr)
+type family Modify n qs q where
+  Modify 0 '(_, xs) q = '(q, xs)
+  Modify n '(x, ()) q = TypeError (Text "Index not found")
+  Modify n '(x, xs) q = '(x, Modify (n - 1) xs q)
 
 -- ------------------------------------------------
 -- Effect System utilities
