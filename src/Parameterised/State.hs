@@ -4,6 +4,7 @@
 module Parameterised.State where
 
 import Data.Kind
+import GHC.Types
 import Utils
 import qualified Utils as Ix
 import Prelude hiding (Monad (..))
@@ -109,3 +110,18 @@ runStateAI _ (Impure (OHere (PutA q)) k) =
 runStateAI p (Impure (OThere op) k) =
   Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
 runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
+
+
+genericState ::
+  ( FindEff StateA effs ~ ind
+  , Write ind Int p ~ q
+  ) =>
+  IProg effs g p q ()
+genericState = undefined
+
+-- putA ::
+--   ( SMember StateA () q effs ps qs
+--   ) =>
+--   q ->
+--   IProg effs g ps qs ()
+-- putA q = Impure (inj (PutA q) :: Op effs ps qs ()) emptyCont

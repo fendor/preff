@@ -7,6 +7,7 @@ import qualified Prelude as P
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Monad (..), Applicative(..))
+import Unsafe.Coerce
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -106,13 +107,30 @@ type Op :: forall k.
   Type
 data Op effs t1 t2 x where
   OHere ::
-    forall x f1 effs sl1 sl2 sr .
+    forall x f1 effs sl1 sl2 sr1 sr2 .
     f1 sl1 sl2 x ->
-    Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
+    Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
   OThere ::
-    forall x eff effs sr1 sr2 sl .
+    forall x eff effs sr1 sr2 sl1 sl2 .
     Op effs sr1 sr2 x ->
-    Op (eff : effs) (sl ': sr1) (sl ': sr2) x
+    Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
+
+-- Less general instance, note the entries sl and sr in the type level list
+-- type Op :: forall k.
+--   [k -> k -> Type -> Type] ->
+--   [k] ->
+--   [k] ->
+--   Type ->
+--   Type
+-- data Op effs t1 t2 x where
+--   OHere ::
+--     forall x f1 effs sl1 sl2 sr .
+--     f1 sl1 sl2 x ->
+--     Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
+--   OThere ::
+--     forall x eff effs sr1 sr2 sl .
+--     Op effs sr1 sr2 x ->
+--     Op (eff : effs) (sl ': sr1) (sl ': sr2) x
 
 infixr 5 :++:
 type (:++:) ::
@@ -133,12 +151,6 @@ data (f1 :++: f2) p1 p2 q2 q1 x2 x1 where
   SInr ::
     f2 sp1 sp2 sq2 sq1 x2 x1 ->
     (f1 :++: f2) '(sl, sp1) '(sl, sp2) '(sl, sq2) '(sl, sq1) x2 x1
-
--- TODO: Use this eventually again
-type Ops :: forall k . [k -> k -> Type -> Type] -> k -> k -> Type -> Type
-data Ops fs p q x where
-  Here :: f s t x -> Ops (f : fs) (s, p) (t, q) x
-  There :: Ops fs s t x -> Ops (f : fs) (p, s) (q, t) x
 
 type IVoid :: forall k.
   (k -> k -> Type -> Type) ->
@@ -299,6 +311,83 @@ type family Max a b where
   Max R _ = R
   Max _ R = R
   Max _ _ = N
+
+type family FindEff e effs :: Natural where
+  FindEff e '[] = TypeError (Text "Not found")
+  FindEff e (e  ': eff) = 0
+  FindEff e (e' ': eff) = 1 + FindEff e eff
+
+type family Write ind p ps where
+  Write _ _ '[]      = TypeError (Text "This sucks")
+  Write 0 p (x : xs) = p : xs
+  Write n p (x : xs) = x : Write (n - 1) p xs
+
+class SMember e effs pres posts where
+  inj :: e () () a -> Op effs pres posts a
+
+instance {-# OVERLAPPING #-} SMember e (e ': effs) (() ': ps) (() ': qs) where
+  -- inj ::
+  --   e () () a ->
+  --   Op (e ': effs) (() ': ps) (() ': ps) a
+  inj e = OHere e
+
+instance {-# INCOHERENT #-} SMember e effs ps qs => SMember e (eff ': effs) (s ': ps) (t ': qs) where
+  inj = OThere . inj
+
+instance
+  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+            )
+  => SMember e '[] '[] '[] where
+    inj = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+
+
+class CMember e p q effs pres posts where
+  injC :: e p q a -> Op effs pres posts a
+
+instance {-# OVERLAPPING #-} CMember e p q (e ': effs) (p ': ps) (q ': qs) where
+  injC ::
+    e p q a ->
+    Op (e ': effs) (p ': ps) (q ': qs) a
+  injC e = OHere e
+
+instance {-# INCOHERENT #-} CMember e p q effs ps qs => CMember e p q (eff ': effs) (s ': ps) (t ': qs) where
+  injC = OThere . injC
+
+instance
+  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+            )
+  => CMember e p q '[] '[] '[] where
+    injC = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+
+class Test a b where
+  output :: a -> b -> String
+
+-- instance Test a b where
+--   output _ _ = "Same"
+
+-- instance Test a b where
+--   output _ _ = "Different"
+
+
+-- | Find the index of an element in a type-level list.
+-- The element must exist
+-- This is essentially a compile-time computation.
+-- Using overlapping instances here is OK since this class is private to this
+-- module
+-- class FindElem e p q effs pres posts where
+--   inj' :: e p q a -> Op effs pres posts a
+
+-- instance FindElem t (t ': r) where
+--   inj' = Here e
+-- instance {-# OVERLAPPABLE #-} FindElem t r => FindElem t (t' ': r) where
+--   inj' = There . inj'
+-- instance TypeError ('Text "Cannot unify effect types." ':$$:
+--                     'Text "Unhandled effect: " ':<>: 'ShowType t ':$$:
+--                     'Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?")
+--   => FindElem e p q '[] '[] '[] where
+--   inj' = error "unreachable"
 
 -- ------------------------------------------------
 -- Rebindable Syntax and IMonad Utils
