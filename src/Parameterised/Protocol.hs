@@ -76,6 +76,8 @@ simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
+choice ::
+  IProg (Protocol : effs) g ((Int :! ((Int :? p) :| b)) : sr) (p : sr) Int
 choice = Ix.do
   send @Int 5
   sel1

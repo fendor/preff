@@ -157,11 +157,16 @@ type IVoid :: forall k.
   k -> k -> k -> k -> Type -> Type -> Type
 data IVoid m p p' q' q x x'
 
-runI :: IProg '[IIdentity] IVoid p q a -> a
+runI :: IProg '[IIdentity] IVoid '[()] '[()] a -> a
 runI (Pure a) = a
-runI (Impure (OHere cmd) k) = runI $ runIKleisliTupled k (runIdentity cmd)
+runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
 runI (Impure (OThere _) _k) = error "Impossible"
 runI (Scope _ _) = error "Impossible"
+
+run :: IProg '[] IVoid p q a -> a
+run (Pure a) = a
+run (Impure _ _) = error "Impossible"
+run (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
