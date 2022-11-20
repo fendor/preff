@@ -99,23 +99,6 @@ transformKleisli ::
   -> IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
-type Op :: forall k.
-  [k -> k -> Type -> Type] ->
-  [k] ->
-  [k] ->
-  Type ->
-  Type
-data Op effs t1 t2 x where
-  OHere ::
-    forall x f1 effs sl1 sl2 sr1 sr2 .
-    f1 sl1 sl2 x ->
-    Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
-  OThere ::
-    forall x eff effs sr1 sr2 sl1 sl2 .
-    Op effs sr1 sr2 x ->
-    Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
-
--- Less general instance, note the entries sl and sr in the type level list
 -- type Op :: forall k.
 --   [k -> k -> Type -> Type] ->
 --   [k] ->
@@ -124,13 +107,31 @@ data Op effs t1 t2 x where
 --   Type
 -- data Op effs t1 t2 x where
 --   OHere ::
---     forall x f1 effs sl1 sl2 sr .
+--     forall x f1 effs sl1 sl2 sr1 sr2 .
 --     f1 sl1 sl2 x ->
---     Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
+--     Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
 --   OThere ::
---     forall x eff effs sr1 sr2 sl .
+--     forall x eff effs sr1 sr2 sl1 sl2 .
 --     Op effs sr1 sr2 x ->
---     Op (eff : effs) (sl ': sr1) (sl ': sr2) x
+--     Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
+--   deriving (Typeable)
+
+-- Less general instance, note the entries sl and sr in the type level list
+type Op :: forall k.
+  [k -> k -> Type -> Type] ->
+  [k] ->
+  [k] ->
+  Type ->
+  Type
+data Op effs t1 t2 x where
+  OHere ::
+    forall x f1 effs sl1 sl2 sr .
+    f1 sl1 sl2 x ->
+    Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
+  OThere ::
+    forall x eff effs sr1 sr2 sl .
+    Op effs sr1 sr2 x ->
+    Op (eff : effs) (sl ': sr1) (sl ': sr2) x
 
 infixr 5 :++:
 type (:++:) ::
@@ -163,7 +164,7 @@ runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdenti
 runI (Impure (OThere _) _k) = error "Impossible"
 runI (Scope _ _) = error "Impossible"
 
-run :: IProg '[] IVoid p q a -> a
+run :: IProg '[] IVoid '[] '[] a -> a
 run (Pure a) = a
 run (Impure _ _) = error "Impossible"
 run (Scope _ _) = error "Impossible"
@@ -327,47 +328,61 @@ type family Write ind p ps where
   Write 0 p (x : xs) = p : xs
   Write n p (x : xs) = x : Write (n - 1) p xs
 
-class SMember e effs pres posts where
-  inj :: e () () a -> Op effs pres posts a
+type family Assume ind ps where
+  Assume _ '[]      = TypeError (Text "This sucks")
+  Assume 0 (x : xs) = x
+  Assume n (x : xs) = Assume (n - 1) xs
 
-instance {-# OVERLAPPING #-} SMember e (e ': effs) (() ': ps) (() ': qs) where
-  -- inj ::
-  --   e () () a ->
-  --   Op (e ': effs) (() ': ps) (() ': ps) a
-  inj e = OHere e
-
-instance {-# INCOHERENT #-} SMember e effs ps qs => SMember e (eff ': effs) (s ': ps) (t ': qs) where
-  inj = OThere . inj
-
-instance
-  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
-             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
-            )
-  => SMember e '[] '[] '[] where
-    inj = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+inj :: KnownNat n =>
+  proxy n -> e p q a -> Op effs ps qs a
+inj pval op = go (natVal pval)
+  where
+    -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
+    go 0 = unsafeCoerce OHere op
+    go n = unsafeCoerce (go (n - 1))
 
 
-class CMember e p q effs pres posts where
-  injC :: e p q a -> Op effs pres posts a
+-- class SMember e effs pres posts where
+--   inj :: e () () a -> Op effs pres posts a
 
-instance {-# OVERLAPPING #-} CMember e p q (e ': effs) (p ': ps) (q ': qs) where
-  injC ::
-    e p q a ->
-    Op (e ': effs) (p ': ps) (q ': qs) a
-  injC e = OHere e
+-- instance {-# OVERLAPPING #-} SMember e (e ': effs) (() ': ps) (() ': qs) where
+--   -- inj ::
+--   --   e () () a ->
+--   --   Op (e ': effs) (() ': ps) (() ': ps) a
+--   inj e = OHere e
 
-instance {-# INCOHERENT #-} CMember e p q effs ps qs => CMember e p q (eff ': effs) (s ': ps) (t ': qs) where
-  injC = OThere . injC
+-- instance {-# INCOHERENT #-} SMember e effs ps qs => SMember e (eff ': effs) (s ': ps) (t ': qs) where
+--   inj = OThere . inj
 
-instance
-  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
-             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
-            )
-  => CMember e p q '[] '[] '[] where
-    injC = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+-- instance
+--   TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+--              Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+--             )
+--   => SMember e '[] '[] '[] where
+--     inj = error "The instance of SMember e p q '[] '[] '[] must never be selected"
 
-class Test a b where
-  output :: a -> b -> String
+
+-- class CMember e p q effs pres posts where
+--   injC :: e p q a -> Op effs pres posts a
+
+-- instance {-# OVERLAPPING #-} CMember e p q (e ': effs) (p ': ps) (q ': qs) where
+--   injC ::
+--     e p q a ->
+--     Op (e ': effs) (p ': ps) (q ': qs) a
+--   injC e = OHere e
+
+-- instance {-# INCOHERENT #-} CMember e p q effs ps qs => CMember e p q (eff ': effs) (s ': ps) (t ': qs) where
+--   injC = OThere . injC
+
+-- instance
+--   TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+--              Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+--             )
+--   => CMember e p q '[] '[] '[] where
+--     injC = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+
+-- class Test a b where
+--   output :: a -> b -> String
 
 -- instance Test a b where
 --   output _ _ = "Same"

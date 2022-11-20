@@ -32,6 +32,7 @@ common exts
     TypeApplications
     TypeFamilies
     TypeOperators
+    QualifiedDo
 
 library
   import:           warnings, exts
@@ -41,7 +42,10 @@ library
     Parameterised.Protocol
     Parameterised.State
     SerialArrays
+    Simple.Examples
     Simple.State
+    Simple.Reader
+    Singletons
     Store
     Utils
 
@@ -54,6 +58,9 @@ library
     , random
     , safe-mutation-plugin
     , stm
+    , singletons
+    , singletons-base
+    , first-class-families
 
   -- Directories containing source files.
   hs-source-dirs:   src
