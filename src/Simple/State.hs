@@ -9,58 +9,35 @@ import Data.Proxy
 import GHC.TypeLits
 import Data.Typeable
 
-data StateS s p q x where
-  PutS :: s -> StateS s () () ()
-  GetS :: StateS s () () s
+data StateS s x where
+  PutS :: s -> StateS s ()
+  GetS :: StateS s s
   deriving (Typeable)
 
-data StateG s m p p' q' q x x' where
-  ModifyG :: (s -> s) -> m (():sr1) (():sr2) x -> StateG s m (():sr1) (():sr1) ((): sr2) (():sr1) x x
+getS ::
+  (SMember (StateS s) effs) =>
+  IProg effs f g ps ps s
+getS = Impure (inj GetS) emptyCont
 
-getS :: forall s effs (ind :: Natural) g ps .
-  (FindEff (StateS s) effs ~ ind, KnownNat ind) =>
-  IProg effs g ps ps s
-getS = Impure (inj (Proxy :: Proxy ind) GetS) emptyCont
-
-putS :: forall s effs ind g ps .
-  ( FindEff (StateS s) effs ~ ind
-  , KnownNat ind
+putS ::
+  ( SMember (StateS s) effs
   ) =>
-  s -> IProg effs g ps ps ()
-putS s = Impure (inj (Proxy :: Proxy ind) $ PutS s) emptyCont
+  s -> IProg effs f g ps ps ()
+putS s = Impure (inj $ PutS s) emptyCont
 
-modifyG ::
-  (s -> s) ->
-  IProg f (StateG s) (():ps) (():ps) a ->
-  IProg f (StateG s) (():ps) (():ps) a
-modifyG f prog = Scope (ModifyG f prog) emptyCont
-
-runStateG :: forall p q s effs ps qs a .
+runState ::
   s ->
-  IProg (StateS s: effs) (StateG s) (p:ps) (q:qs) a ->
-  IProg effs IVoid ps qs (s, a)
-runStateG s (Pure a) = I.return (s, a)
-runStateG s (Impure (OHere GetS) k) = runStateG s (runIKleisliTupled k s)
-runStateG _s (Impure (OHere (PutS s')) k) = runStateG s' (runIKleisliTupled k ())
-runStateG s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateG s . runIKleisliTupled k)
-runStateG s (Scope (ModifyG f prog) k) = I.do
-  (_s, x) <- runStateG (f s) prog -- :: IProg effs IVoid ps sr2 (s, x)
-  runStateG s (unsafeCoerce runIKleisliTupled k x)
- where
-
-runState :: forall p q s effs ps qs a .
-  s ->
-  IProg (StateS s:effs) IVoid (p:ps) (q:qs) a ->
-  IProg effs IVoid ps qs (s, a)
-runState s (Pure a) = I.return (s, a)
+  IProg (StateS s:effs) IIdentity IVoid ps qs a ->
+  IProg effs IIdentity IVoid ps qs (s, a)
+runState s (Value a) = I.return (s, a)
 runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
 runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
 runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
-runState _ (Scope _ _) = error "Impossible, Scope node must never be created"
+runState _ (ScopeT _ _) = error "Impossible, Scope node must never be created"
 
 stateExample ::
-  (FindEff (StateS Int) effs ~ ind, KnownNat ind) =>
-  IProg effs g ps ps String
+  (SMember (StateS Int) effs) =>
+  IProg effs f g ps ps String
 stateExample = I.do
   i <- getS @Int
   putS (i + i)

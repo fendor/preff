@@ -1,4 +1,4 @@
-let 
+let
   sources = import ./nix/sources.nix;
   nixpkgs = import sources.nixpkgs {};
 in
@@ -11,6 +11,7 @@ stdenv.mkDerivation {
     ncurses
     haskell.compiler.ghc942
     haskellPackages.cabal-install
+    haskellPackages.fourmolu
   ];
   src = null;
   shellHook = ''

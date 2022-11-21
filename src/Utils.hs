@@ -13,15 +13,6 @@ import Unsafe.Coerce
 -- Main Effect monad
 -- ------------------------------------------------
 
-type f ~> g = forall x . f x -> g x
-
-class IHFunctor h where
-  ihmap :: (IFunctor f , IFunctor g) => (f p q ~> g q r) -> (h (f p q) ~> h (g q r))
-
-class IHFunctor sig => Syntax sig where
-  iemap :: (IMonad m) => (m p q a -> m p q b) -> (sig (m p q) a -> sig (m p q) b)
-  iweave :: (IMonad m, IMonad n, Functor c) => c () -> (forall x . c (m p q x) -> n p q (c x)) -> (sig (m p q) a -> sig (n p q) (c a))
-
 -- type IProg :: forall k.
 --   (k -> k -> Type -> Type) ->
 --   ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
@@ -29,44 +20,53 @@ class IHFunctor sig => Syntax sig where
 --   k ->
 --   Type ->
 --   Type
-data IProg f g p q a where
-  Pure :: a -> IProg f g p p a
+data IProg effs f g p q a where
+  Value :: a -> IProg effs f g p p a
   Impure ::
-    Op f p q x ->
-    IKleisliTupled (IProg f g) '(q, x) '(r, a) ->
-    -- (x -> IProg f g q r a)
-    IProg f g p r a
-  Scope ::
-    g (IProg f g) p p' q' q x x' ->
+    Op effs x ->
+    IKleisliTupled (IProg effs f g) '(q, x) '(r, a)  ->
+    IProg effs f g p r a
+  ImpureT ::
+    f p q x ->
     -- IProg f g p' q' x ->
-    IKleisliTupled (IProg f g) '(q, x') '(r, a) ->
+    IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
     -- (x' -> IProg f g q r a) ->
-    IProg f g p r a
+    IProg effs f g p r a
+  ScopeT ::
+    g (IProg effs f g) p p' q' q x x' ->
+    -- IProg f g p' q' x ->
+    IKleisliTupled (IProg effs f g) '(q, x') '(r, a) ->
+    -- (x' -> IProg f g q r a) ->
+    IProg effs f g p r a
 
-instance Functor (IProg f g p q) where
-  fmap f (Pure a) = Pure $ f a
+instance Functor (IProg effs f g p q) where
+  fmap f (Value a) = Value $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (Scope op k) = Scope op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (ScopeT op k) = ScopeT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
-instance IFunctor (IProg f g) where
-  imap f (Pure a) = Pure $ f a
+instance IFunctor (IProg effs f g) where
+  imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (ScopeT op k) = ScopeT op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
-instance IApplicative (IProg f g) where
-  pure = Pure
-  (Pure f) <*> k = fmap f k
+instance IApplicative (IProg effs f g) where
+  pure = Value
+  (Value f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  ScopeT fop k' <*> k = ScopeT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (IProg f g) where
-  return :: a -> IProg f g i i a
-  return = Pure
+instance IMonad (IProg effs  f g) where
+  return :: a -> IProg effs f g i i a
+  return = Value
 
-  (>>=) :: IProg f g i j a -> (a -> IProg f g j k b) -> IProg f g i k b
-  (Pure a) >>= f = f a
+  (>>=) :: IProg effs f g i j a -> (a -> IProg effs f g j k b) -> IProg effs  f g i k b
+  (Value a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ScopeT g k) >>= f = ScopeT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -117,76 +117,44 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 --   deriving (Typeable)
 
 -- Less general instance, note the entries sl and sr in the type level list
-type Op :: forall k.
-  [k -> k -> Type -> Type] ->
-  [k] ->
-  [k] ->
+type Op ::
+  [Type -> Type] ->
   Type ->
   Type
-data Op effs t1 t2 x where
-  OHere ::
-    forall x f1 effs sl1 sl2 sr .
-    f1 sl1 sl2 x ->
-    Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
-  OThere ::
-    forall x eff effs sr1 sr2 sl .
-    Op effs sr1 sr2 x ->
-    Op (eff : effs) (sl ': sr1) (sl ': sr2) x
-
-infixr 5 :++:
-type (:++:) ::
-  forall sl sr.
-  (sl -> sl -> sl -> sl -> Type -> Type -> Type) ->
-  (sr -> sr -> sr -> sr -> Type -> Type -> Type) ->
-  (sl, sr) ->
-  (sl, sr) ->
-  (sl, sr) ->
-  (sl, sr) ->
-  Type ->
-  Type ->
-  Type
-data (f1 :++: f2) p1 p2 q2 q1 x2 x1 where
-  SInl ::
-    f1 p1 p2 q2 q1 x2 x1 ->
-    (f1 :++: f2) '(p1, sr) '(p2, sr) '(q2, sr) '(q1, sr) x2 x1
-  SInr ::
-    f2 sp1 sp2 sq2 sq1 x2 x1 ->
-    (f1 :++: f2) '(sl, sp1) '(sl, sp2) '(sl, sq2) '(sl, sq1) x2 x1
+data Op f x where
+  OHere :: f x -> Op (f : effs) x
+  OThere :: Op effs x -> Op (eff : effs) x
 
 type IVoid :: forall k.
   (k -> k -> Type -> Type) ->
   k -> k -> k -> k -> Type -> Type -> Type
 data IVoid m p p' q' q x x'
 
-runI :: IProg '[IIdentity] IVoid '[()] '[()] a -> a
-runI (Pure a) = a
-runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
-runI (Impure (OThere _) _k) = error "Impossible"
-runI (Scope _ _) = error "Impossible"
-
-run :: IProg '[] IVoid '[] '[] a -> a
-run (Pure a) = a
-run (Impure _ _) = error "Impossible"
-run (Scope _ _) = error "Impossible"
+run :: IProg '[] IIdentity IVoid p q a -> a
+run (Value a) = a
+run (Impure _cmd _k) = error "Impossible"
+run (ImpureT cmd k) = run $ runIKleisliTupled k (runIIdentity cmd)
+run (ScopeT _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
 
-newtype IIdentity p q a = IIdentity a
+data IIdentity p q a where
+  IIdentity :: a -> IIdentity p q a
 
-runIdentity :: IIdentity p q a -> a
-runIdentity (IIdentity a) = a
+runIIdentity :: IIdentity p q a -> a
+runIIdentity (IIdentity a) = a
 
-type IIO :: forall k. k -> k -> Type -> Type
-data IIO p q a where
-  RunIO :: IO a -> IIO p p a
+data IIO a where
+  RunIO :: IO a -> IIO a
 
-runIO :: IProg '[IIO] IVoid p q a -> IO a
-runIO (Pure a) = P.pure a
+runIO :: IProg '[IIO] IIdentity IVoid p q a -> IO a
+runIO (Value a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (Scope _ _) = error "Impossible"
+runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
+runIO (ScopeT _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Parametric Effect monad
@@ -333,33 +301,34 @@ type family Assume ind ps where
   Assume 0 (x : xs) = x
   Assume n (x : xs) = Assume (n - 1) xs
 
-inj :: KnownNat n =>
-  proxy n -> e p q a -> Op effs ps qs a
-inj pval op = go (natVal pval)
-  where
-    -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
-    go 0 = unsafeCoerce OHere op
-    go n = unsafeCoerce OThere (go (n - 1))
+-- inj :: KnownNat n =>
+--   proxy n -> e p q a -> Op effs ps qs a
+-- inj pval op = go (natVal pval)
+--   where
+--     -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
+--     go 0 = unsafeCoerce OHere op
+--     go n = unsafeCoerce OThere (go (n - 1))
 
 
--- class SMember e effs pres posts where
---   inj :: e () () a -> Op effs pres posts a
+class SMember f effs where
+  inj :: f a -> Op effs a
 
--- instance {-# OVERLAPPING #-} SMember e (e ': effs) (() ': ps) (() ': qs) where
---   -- inj ::
---   --   e () () a ->
---   --   Op (e ': effs) (() ': ps) (() ': ps) a
---   inj e = OHere e
+instance {-# OVERLAPPING #-} SMember e (e ': effs) where
+  -- inj ::
+  --   e () () a ->
+  --   Op (e ': effs) (() ': ps) (() ': ps) a
+  inj :: f a -> Op (f : effs) a
+  inj e = OHere e
 
--- instance {-# INCOHERENT #-} SMember e effs ps qs => SMember e (eff ': effs) (s ': ps) (t ': qs) where
---   inj = OThere . inj
+instance {-# INCOHERENT #-} SMember e effs => SMember e (eff ': effs) where
+  inj = OThere . inj
 
--- instance
---   TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
---              Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
---             )
---   => SMember e '[] '[] '[] where
---     inj = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+instance
+  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+            )
+  => SMember e '[] where
+    inj = error "The instance of SMember e p q '[] must never be selected"
 
 
 -- class CMember e p q effs pres posts where
