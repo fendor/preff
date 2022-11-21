@@ -49,32 +49,43 @@ data StateA p q a where
   GetA :: StateA p p p
 
 putAI :: forall p ind effs g ps qs .
-  (KnownNat ind, FindEff StateA effs ~ ind, Write ind p ps ~ qs, Assume ind qs ~ p) =>
+  ( KnownNat ind
+  , FindEff StateA effs ~ ind
+  , Write ind p ps ~ qs
+  , Assume ind qs ~ p
+  ) =>
   p -> IProg effs g ps qs ()
 putAI p = Impure (inj (Proxy :: Proxy ind) $ PutA p) emptyCont
 
-getAI :: forall ind effs g ps qs p .
-  (KnownNat ind, FindEff StateA effs ~ ind, Assume ind ps ~ p) =>
-  IProg effs g ps qs p
+getAI :: forall ind effs g ps p .
+  ( KnownNat ind
+  , FindEff StateA effs ~ ind
+  , Assume ind ps ~ p
+  ) =>
+  IProg effs g ps ps p
 getAI = Impure (inj (Proxy :: Proxy ind) GetA) emptyCont
 
--- stateChangeExp :: forall ind p j effs ps qs sr p1 .
---   ( KnownNat ind
---   , FindEff StateA effs ~ ind
---   , ind                 ~ 0
---   , Assume ind ps       ~ String
---   , Write ind Int ps    ~ qs
---   , qs ~ (Int: sr)
---   ) =>
---   IProg effs StateAG ps qs String
--- -- stateChangeExp :: IProg '[StateA] StateAG '[String] '[Int] String
--- stateChangeExp = Ix.do
---   s <- getAI
---   putAI (5 :: Int)
---   (i :: Int) <- getAI
---   localAG' (+ (1 :: Int)) $ Ix.return ()
---   Ix.return $ s ++ show i
+stateChangeExp :: forall ind p j effs ps qs sr p1 .
+  ( KnownNat ind
+  , FindEff StateA effs ~ ind
+  , ind                 ~ 0
+  , Assume ind ps       ~ String
+  , Write ind Int ps    ~ qs
+  -- , qs ~ (Int: sr)
+  ) =>
+  IProg effs StateAG ps qs String
+-- stateChangeExp :: IProg '[StateA] StateAG '[String] '[Int] String
+stateChangeExp = Ix.do
+  s <- getAI
+  -- putAI ("Test" :: String)
+  putAI (5 :: Int)
+  -- putAI (3 :: Int)
+  x <- localAG' (+ (1 :: Int)) $ getAI
+  Ix.return $ s ++ show x
 
+
+
+runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
 
 localAG' ::
   (p -> p') ->
