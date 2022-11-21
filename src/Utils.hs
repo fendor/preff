@@ -339,7 +339,7 @@ inj pval op = go (natVal pval)
   where
     -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
     go 0 = unsafeCoerce OHere op
-    go n = unsafeCoerce (go (n - 1))
+    go n = unsafeCoerce OThere (go (n - 1))
 
 
 -- class SMember e effs pres posts where

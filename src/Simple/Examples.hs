@@ -6,7 +6,7 @@ import Utils
 import Simple.Reader
 import Simple.State
 import GHC.TypeLits
-import Fcf 
+import Fcf
 
 type SMember e effs i = (FindEff e effs ~ i, KnownNat i)
 
@@ -18,7 +18,9 @@ type SMember e effs i = (FindEff e effs ~ i, KnownNat i)
 --   IProg effs (StateG String) ps ps String
 foo ::
   ( FindEff (Reader Int) effs ~ reader, KnownNat reader
-  , FindEff (StateS String) effs ~ state, KnownNat state) =>
+  , FindEff (StateS String) effs ~ state, KnownNat state
+  , ps ~ ((): sr)
+  ) =>
   IProg effs (StateG String) ps ps String
 foo = I.do
   n <- ask @Int

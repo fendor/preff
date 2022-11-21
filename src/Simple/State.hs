@@ -33,7 +33,7 @@ modifyG ::
   (s -> s) ->
   IProg f (StateG s) (():ps) (():ps) a ->
   IProg f (StateG s) (():ps) (():ps) a
-modifyG f prog = Scope (ModifyG f prog) undefined -- emptyCont
+modifyG f prog = Scope (ModifyG f prog) emptyCont
 
 runStateG :: forall p q s effs ps qs a .
   s ->
