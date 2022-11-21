@@ -19,35 +19,38 @@ import Utils
 import qualified Utils as I
 import Prelude hiding (Monad (..), length, read)
 
-afork a = Scope (AFork a) emptyCont
+afork a = ScopeT (AFork a) emptyCont
 
-join i1 i2 = Impure (OHere $ Join i1 i2) $ IKleisliTupled return
+join i1 i2 = ImpureT (Join i1 i2) $ IKleisliTupled return
 
-write a b c = Impure (OHere $ Write a b c) $ IKleisliTupled return
+write a b c = ImpureT (Write a b c) $ IKleisliTupled return
 
-malloc a b = Impure (OHere $ Malloc a b) $ IKleisliTupled return
+malloc a b = ImpureT (Malloc a b) $ IKleisliTupled return
 
-slice a b = Impure (OHere $ Split a b) $ IKleisliTupled return
+slice a b = ImpureT (Split a b) $ IKleisliTupled return
 
-length a = Impure (OHere $ Length a) $ IKleisliTupled return
+length a = ImpureT (Length a) $ IKleisliTupled return
 
-read a b = Impure (OHere $ Read a b) $ IKleisliTupled return
+read a b = ImpureT (Read a b) $ IKleisliTupled return
 
-runSerialArrays :: forall effs p q u ps a qs. IProg (Array : IIO : effs) IVoid (p : u : ps) (q : u : qs) a -> IProg (IIO : effs) IVoid (u : ps) (u : qs) a
-runSerialArrays (Pure a) = return a
-runSerialArrays (Scope _ _) = error "Test"
-runSerialArrays (Impure (OThere cmd) k) =
+runSerialArrays ::
+    (SMember IIO effs) =>
+    IProg effs Array IVoid p q a ->
+    IProg effs IIdentity IVoid () () a
+runSerialArrays (Value a) = return a
+runSerialArrays (ScopeT _ _) = error "Test"
+runSerialArrays (Impure cmd k) =
     -- unsafeCoerce is currently necessary because GHC fails to unify:
     --
     -- expected: IProg (IIO : effs) IVoid sr2       (u : qs) a
     -- actual:   IProg (IIO : effs) IVoid (u : ps0) (u : qs) a
     --
     -- Maybe we can pass somehow that sr2 ~ (u: ps0)
-    Impure cmd (IKleisliTupled $ \x -> unsafeCoerce runSerialArrays $ runIKleisliTupled k x)
-runSerialArrays (Impure (OHere cmd) k) = case cmd of
+    Impure cmd (IKleisliTupled $ \x -> runSerialArrays $ runIKleisliTupled k x)
+runSerialArrays (ImpureT cmd k) = case cmd of
     Malloc i (a :: b) -> I.do
         let bounds = (0, i - 1)
-        arr <- embedIO1 (IO.newArray bounds a :: IO (IO.IOArray Int b))
+        arr <- embedIO (IO.newArray bounds a :: IO (IO.IOArray Int b))
         let arr' = unsafeCoerce arr :: IO.IOArray Int Any
         runSerialArrays (runIKleisliTupled k (unsafeCreateA (bounds, arr')))
     Read n i -> I.do
@@ -56,7 +59,7 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
         if offset > upper || offset < lower
             then error $ "Index out of bounds " ++ show (lower, upper)
             else I.do
-                v <- embedIO1 $ (IO.readArray (arr :: IO.IOArray Int Any) offset :: IO Any)
+                v <- embedIO $ (IO.readArray (arr :: IO.IOArray Int Any) offset :: IO Any)
                 v `seq` runSerialArrays (runIKleisliTupled k $ unsafeCoerce v)
     Write n i (a :: b) -> I.do
         let ((lower, upper), arr) = unsafeUncoverA n
@@ -64,7 +67,7 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
         if offset > upper || offset < lower
             then error $ "Index out of bounds " ++ show (lower, upper)
             else I.do
-                v <- embedIO1 $ (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a :: IO ())
+                v <- embedIO $ (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a :: IO ())
                 v `seq` runSerialArrays (runIKleisliTupled k ())
     Length n -> I.do
         let ((lower, upper), _) = unsafeUncoverA n
@@ -85,17 +88,14 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
     Wait _ -> error "Wait has no point, atm"
     InjectIO _ -> error "Don't use injectIO!"
 
-embedIO1 :: IO a -> IProg (IIO : effs) IVoid (u : ps) (u : ps) a
-embedIO1 io = Impure (OHere $ RunIO io) emptyCont
-
 serialConvolve ::
-    forall k1 (k2 :: [AccessLevel]) (n :: Nat) (v :: k1) eff sr1.
+    forall k1 (k2 :: [AccessLevel]) (n :: Nat) (v :: k1) eff.
     ( 'R ≤ Lookup k2 n, 'X ≤ Lookup k2 n) =>
     Int ->
     Int ->
     AToken Int v n ->
     [Int] ->
-    IProg (Array : eff) IVoid (k2 : sr1) (k2 : sr1) ()
+    IProg eff Array IVoid k2 k2 ()
 serialConvolve before after inputs weights = I.do
     len <- length inputs
     _ <- foldM [0 .. (len - 1)] before $ \i prevEl -> I.do

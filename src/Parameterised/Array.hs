@@ -6,9 +6,13 @@ module Parameterised.Array where
 import Data.Array.IO as IO
 import GHC.Types (Any)
 import Parameterised.State (Future (..))
+import Control.Concurrent.STM.TMVar
+import Control.Concurrent.STM
 import Unsafe.Coerce (unsafeCoerce)
 import Utils
+import qualified Utils as I
 import Prelude hiding (Monad (..), read)
+import qualified Prelude as P
 
 data ValueType where
     Actual :: ValueType
@@ -71,15 +75,15 @@ data Array p q x where
 data Thread m p p' q' q x x' where
     AFork ::
         (AcceptableList p1 q1 p2) =>
-        m (p2 : sr1) (q2 : sr2) a ->
-        Thread m (p1 : sr1) (p2 : sr1) (q2 : sr2) (q1 : sr2) a (Future a)
+        m p2 q2 a ->
+        Thread m p1 p2 q2 q1 a (Future a)
     -- TODO: sr1 ~ [] is required for the runner
-    AFinish :: m (p : sr1) (q : sr1) () -> Thread m (p : sr1) (p : sr1) (q : sr1) (p : sr1) () ()
+    AFinish :: m p q () -> Thread m p p q p () ()
 
 -- afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
-afork s = Scope (AFork s) emptyCont
+afork s = ScopeT (AFork s) emptyCont
 
-afinish s = Scope (AFinish s) emptyCont
+afinish s = ScopeT (AFinish s) emptyCont
 
 join i1 i2 = Impure (OHere $ Join i1 i2) emptyCont
 
@@ -115,73 +119,69 @@ unsafeCreateA = unsafeCreate @(Bounds, IO.IOArray Int Any)
 unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n -> (Bounds, IO.IOArray Int Any)
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
--- serialExample :: IProg Array any '[] '[X] Integer
--- serialExample = do
---   arr <- malloc 5 0
---   write arr 0 1
---   val <- read arr 0
---   return val
+runArrays ::
+  IProg '[IIO] Array Thread p q a ->
+  IO ()
+runArrays prog = P.do
+    _ <- runIO $ runArraysH prog
+    P.pure ()
 
--- runArrays ::
---   IProg '[Array] Thread '[ p ] '[ q ] a ->
---   IO ()
--- runArrays prog = runArraysH prog P.>> P.return ()
+runArraysH :: SMember IIO effs =>
+  IProg effs Array Thread p q a ->
+  IProg effs IIdentity IVoid () () [TMVar ()]
+runArraysH (Value _a) = I.return []
+runArraysH (ImpureT (Malloc i (a :: b)) c) =
+  let upper = i - 1
+   in let bounds = (0, upper)
+       in I.do
+        arr <- embedIO $ (IO.newArray bounds a :: IO (IO.IOArray Int b))
+        let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
+        runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
 
--- runArraysH ::
---   IProg (Array:effs) Thread (p:sr1) (q:sr2) a ->
---   IProg effs IVoid sr1 sr2 [TMVar ()]
--- runArraysH (Pure _a) = P.return []
--- runArraysH (Impure (OHere (Malloc i (a :: b))) c) =
---   let upper = i - 1
---    in let bounds = (0, upper)
---        in (IO.newArray bounds a :: IO (IO.IOArray Int b))
---             P.>>= ( \arr ->
---                       let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
---                        in runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
---                   )
--- runArraysH (Impure (OHere (Read n i)) c) =
---   let ((lower, upper), arr) = unsafeUncoverA n
---    in let offset = i + lower
---        in if offset > upper || offset < lower
---             then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
---             else
---               IO.readArray (arr :: IO.IOArray Int Any) offset
---                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
--- runArraysH (Impure (OHere (Write n i (a :: b))) c) =
---   let ((lower, upper), arr) = unsafeUncoverA n
---    in let offset = i + lower
---        in if offset > upper || offset < lower
---             then error "Index out of bounds"
---             else
---               IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
---                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
--- runArraysH (Impure (OHere (Length n)) c) =
---   let ((lower, upper), _arr) = unsafeUncoverA n
---    in if upper - lower + 1 < 0
---         then error "Should not be here"
---         else runArraysH (runIKleisliTupled c (upper - lower + 1))
--- runArraysH (Impure (OHere (Join _a _b)) c) =
---   runArraysH (runIKleisliTupled c ())
--- runArraysH (Impure (OHere (Split n i)) c) =
---   let ((lower, upper), arr) = unsafeUncoverA n
---    in let offset = i + lower
---        in if offset > upper || offset < lower
---             then error ("Index out of bounds " ++ show i ++ " " ++ show (lower, upper))
---             else
---               let n1 = (lower, offset)
---                in let n2 = (offset + 1, upper)
---                    in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
--- runArraysH (Impure (OHere (InjectIO a)) c) =
---   a P.>>= (runArraysH . runIKleisliTupled c)
--- runArraysH (Scope (AFork c) a) =
---   newEmptyTMVarIO
---     P.>>= ( \var {-forkIO ( -} ->
---               runArraysH c
---                 P.>>= (atomically . mapM_ takeTMVar)
---                   P.>> atomically (putTMVar var () {-)-})
---                   P.>> runArraysH (runIKleisliTupled a Future)
---                 P.>>= (\result -> P.return (var : result))
---           )
--- runArraysH (Scope (AFinish c) a) =
---   runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
--- runArraysH _ = undefined
+runArraysH (ImpureT ( (Read n i)) c) =
+  let ((lower, upper), arr) = unsafeUncoverA n
+   in let offset = i + lower
+       in if offset > upper || offset < lower
+            then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
+            else
+              embedIO (IO.readArray (arr :: IO.IOArray Int Any) offset)
+                I.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
+runArraysH (ImpureT ( (Write n i (a :: b))) c) =
+  let ((lower, upper), arr) = unsafeUncoverA n
+   in let offset = i + lower
+       in if offset > upper || offset < lower
+            then error "Index out of bounds"
+            else
+              embedIO (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a)
+                I.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
+runArraysH (ImpureT ( (Length n)) c) =
+  let ((lower, upper), _arr) = unsafeUncoverA n
+   in if upper - lower + 1 < 0
+        then error "Should not be here"
+        else runArraysH (runIKleisliTupled c (upper - lower + 1))
+runArraysH (ImpureT ( (Join _a _b)) c) =
+  runArraysH (runIKleisliTupled c ())
+runArraysH (ImpureT ( (Split n i)) c) =
+  let ((lower, upper), arr) = unsafeUncoverA n
+   in let offset = i + lower
+       in if offset > upper || offset < lower
+            then error ("Index out of bounds " ++ show i ++ " " ++ show (lower, upper))
+            else
+              let n1 = (lower, offset)
+               in let n2 = (offset + 1, upper)
+                   in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
+runArraysH (ImpureT ( (InjectIO a)) c) = I.do
+    v <- embedIO a
+    runArraysH $ runIKleisliTupled c v
+runArraysH (ScopeT (AFork c) a) = I.do
+    var <- embedIO newEmptyTMVarIO
+
+    runArraysH c
+        I.>>= \x -> embedIO (atomically $ mapM_ takeTMVar x)
+        I.>> embedIO (atomically (putTMVar var () {-)-}))
+        I.>> runArraysH (runIKleisliTupled a Future)
+        I.>>= (\result -> I.return (var : result))
+
+runArraysH (ScopeT (AFinish c) a) =
+  runArraysH c I.>>= (embedIO . atomically . mapM_ takeTMVar) I.>> runArraysH (runIKleisliTupled a ())
+runArraysH _ = undefined

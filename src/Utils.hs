@@ -5,7 +5,6 @@ module Utils where
 
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
-import Unsafe.Coerce
 import Prelude hiding (Applicative (..), Monad (..))
 import qualified Prelude as P
 
@@ -13,18 +12,19 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
--- type IProg :: forall k.
---   (k -> k -> Type -> Type) ->
---   ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
---   k ->
---   k ->
---   Type ->
---   Type
+type IProg :: forall k.
+  [Type -> Type] ->
+  (k -> k -> Type -> Type) ->
+  ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
+  k ->
+  k ->
+  Type ->
+  Type
 data IProg effs f g p q a where
     Value :: a -> IProg effs f g p p a
     Impure ::
         Op effs x ->
-        IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
+        IKleisliTupled (IProg effs f g) '(p, x) '(r, a) ->
         IProg effs f g p r a
     ImpureT ::
         f p q x ->
@@ -164,6 +164,9 @@ runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopeT _ _) = error "Impossible"
+
+embedIO :: SMember IIO effs => IO a -> IProg effs f g p p a
+embedIO io = Impure (inj $ RunIO io) emptyCont
 
 -- ------------------------------------------------
 -- Parametric Effect monad

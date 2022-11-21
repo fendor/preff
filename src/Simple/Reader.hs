@@ -7,10 +7,10 @@ data Reader e a where
     Ask :: Reader e e
 
 ask ::
-    forall e effs f g p r.
+    forall e effs f g p.
     ( SMember (Reader e) effs
     ) =>
-    IProg effs f g p r e
+    IProg effs f g p p e
 ask = Impure (inj Ask) emptyCont
 
 runReader ::
