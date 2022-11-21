@@ -1,13 +1,13 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Utils where
 
-import qualified Prelude as P
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
-import Prelude hiding (Monad (..), Applicative(..))
 import Unsafe.Coerce
+import Prelude hiding (Applicative (..), Monad (..))
+import qualified Prelude as P
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -21,71 +21,73 @@ import Unsafe.Coerce
 --   Type ->
 --   Type
 data IProg effs f g p q a where
-  Value :: a -> IProg effs f g p p a
-  Impure ::
-    Op effs x ->
-    IKleisliTupled (IProg effs f g) '(q, x) '(r, a)  ->
-    IProg effs f g p r a
-  ImpureT ::
-    f p q x ->
-    -- IProg f g p' q' x ->
-    IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
-    -- (x' -> IProg f g q r a) ->
-    IProg effs f g p r a
-  ScopeT ::
-    g (IProg effs f g) p p' q' q x x' ->
-    -- IProg f g p' q' x ->
-    IKleisliTupled (IProg effs f g) '(q, x') '(r, a) ->
-    -- (x' -> IProg f g q r a) ->
-    IProg effs f g p r a
+    Value :: a -> IProg effs f g p p a
+    Impure ::
+        Op effs x ->
+        IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
+        IProg effs f g p r a
+    ImpureT ::
+        f p q x ->
+        -- IProg f g p' q' x ->
+        IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
+        -- (x' -> IProg f g q r a) ->
+        IProg effs f g p r a
+    ScopeT ::
+        g (IProg effs f g) p p' q' q x x' ->
+        -- IProg f g p' q' x ->
+        IKleisliTupled (IProg effs f g) '(q, x') '(r, a) ->
+        -- (x' -> IProg f g q r a) ->
+        IProg effs f g p r a
 
 instance Functor (IProg effs f g p q) where
-  fmap f (Value a) = Value $ f a
-  fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (ScopeT op k) = ScopeT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+    fmap f (Value a) = Value $ f a
+    fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+    fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+    fmap f (ScopeT op k) = ScopeT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
 instance IFunctor (IProg effs f g) where
-  imap f (Value a) = Value $ f a
-  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ScopeT op k) = ScopeT op (IKleisliTupled $ imap f . runIKleisliTupled k)
+    imap f (Value a) = Value $ f a
+    imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
+    imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
+    imap f (ScopeT op k) = ScopeT op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
 instance IApplicative (IProg effs f g) where
-  pure = Value
-  (Value f) <*> k = fmap f k
-  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  ScopeT fop k' <*> k = ScopeT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+    pure = Value
+    (Value f) <*> k = fmap f k
+    (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+    (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+    ScopeT fop k' <*> k = ScopeT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (IProg effs  f g) where
-  return :: a -> IProg effs f g i i a
-  return = Value
+instance IMonad (IProg effs f g) where
+    return :: a -> IProg effs f g i i a
+    return = Value
 
-  (>>=) :: IProg effs f g i j a -> (a -> IProg effs f g j k b) -> IProg effs  f g i k b
-  (Value a) >>= f = f a
-  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ScopeT g k) >>= f = ScopeT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+    (>>=) :: IProg effs f g i j a -> (a -> IProg effs f g j k b) -> IProg effs f g i k b
+    (Value a) >>= f = f a
+    (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+    (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+    (ScopeT g k) >>= f = ScopeT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
-  Fst '(a, b) = a
-type family Snd x where
-  Snd '(a, b) = b
+    Fst '(a, b) = a
 
--- | Wrapper type that can carry additional type state.
---
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
---   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
---             (b :: k3).
---      a -> m p q b
---
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
+type family Snd x where
+    Snd '(a, b) = b
+
+{- | Wrapper type that can carry additional type state.
+
+ >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+ runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
+             (b :: k3).
+      a -> m p q b
+
+ >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
+ runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
+-}
 newtype IKleisliTupled m ia ob = IKleisliTupled
-  { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
-  }
+    { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
+    }
 
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
@@ -94,9 +96,9 @@ emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
 emptyCont = IKleisliTupled Utils.return
 
 transformKleisli ::
-  (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2))
-  -> IKleisliTupled m ia ob1
-  -> IKleisliTupled m ia ob2
+    (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2)) ->
+    IKleisliTupled m ia ob1 ->
+    IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
 -- type Op :: forall k.
@@ -118,16 +120,23 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
 -- Less general instance, note the entries sl and sr in the type level list
 type Op ::
-  [Type -> Type] ->
-  Type ->
-  Type
+    [Type -> Type] ->
+    Type ->
+    Type
 data Op f x where
-  OHere :: f x -> Op (f : effs) x
-  OThere :: Op effs x -> Op (eff : effs) x
+    OHere :: f x -> Op (f : effs) x
+    OThere :: Op effs x -> Op (eff : effs) x
 
-type IVoid :: forall k.
-  (k -> k -> Type -> Type) ->
-  k -> k -> k -> k -> Type -> Type -> Type
+type IVoid ::
+    forall k.
+    (k -> k -> Type -> Type) ->
+    k ->
+    k ->
+    k ->
+    k ->
+    Type ->
+    Type ->
+    Type
 data IVoid m p p' q' q x x'
 
 run :: IProg '[] IIdentity IVoid p q a -> a
@@ -141,17 +150,17 @@ run (ScopeT _ _) = error "Impossible"
 -- ------------------------------------------------
 
 data IIdentity p q a where
-  IIdentity :: a -> IIdentity p q a
+    IIdentity :: a -> IIdentity p q a
 
 runIIdentity :: IIdentity p q a -> a
 runIIdentity (IIdentity a) = a
 
 data IIO a where
-  RunIO :: IO a -> IIO a
+    RunIO :: IO a -> IIO a
 
 runIO :: IProg '[IIO] IIdentity IVoid p q a -> IO a
 runIO (Value a) = P.pure a
-runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisliTupled k x
+runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopeT _ _) = error "Impossible"
@@ -162,18 +171,18 @@ runIO (ScopeT _ _) = error "Impossible"
 
 type IMonad :: (p -> p -> Type -> Type) -> Constraint
 class IMonad m where
-  return :: a -> m i i a
-  (>>=) :: m i j a -> (a -> m j k b) -> m i k b
-  (>>) :: m i j a -> m j k b -> m i k b
-  g >> f = g >>= const f
+    return :: a -> m i i a
+    (>>=) :: m i j a -> (a -> m j k b) -> m i k b
+    (>>) :: m i j a -> m j k b -> m i k b
+    g >> f = g >>= const f
 
 type IFunctor :: (p -> p -> Type -> Type) -> Constraint
 class IFunctor f where
-  imap :: (a -> b) -> f p q a -> f p q b
+    imap :: (a -> b) -> f p q a -> f p q b
 
 class IFunctor f => IApplicative f where
-  pure :: a -> f i i a
-  (<*>) :: f i j (a -> b) -> f j r a -> f i r b
+    pure :: a -> f i i a
+    (<*>) :: f i j (a -> b) -> f j r a -> f i r b
 
 -- ------------------------------------------------
 -- Effect System utilities
@@ -183,35 +192,35 @@ data Nat = Z | S Nat
 
 type Lookup :: [a] -> Nat -> a
 type family Lookup a b where
-  Lookup '[] _ = TypeError (Text "Could not find index")
-  Lookup (_ ': xs) (S n) = Lookup xs n
-  Lookup (x ': _) Z = x
+    Lookup '[] _ = TypeError (Text "Could not find index")
+    Lookup (_ ': xs) (S n) = Lookup xs n
+    Lookup (x ': _) Z = x
 
 type Replace :: [m] -> Nat -> m -> [m]
 type family Replace xs idx m where
-  Replace (x ': xs) Z m = m ': xs
-  Replace (x ': xs) (S s) m = x ': Replace xs s m
+    Replace (x ': xs) Z m = m ': xs
+    Replace (x ': xs) (S s) m = x ': Replace xs s m
 
 type Append :: [a] -> a -> [a]
 type family Append xs x where
-  Append '[] t = t ': '[]
-  Append (x ': xs) t = x ': Append xs t
+    Append '[] t = t ': '[]
+    Append (x ': xs) t = x ': Append xs t
 
 type Length :: [a] -> Nat
 type family Length a where
-  Length '[] = Z
-  Length (x ': xs) = S (Length xs)
+    Length '[] = Z
+    Length (x ': xs) = S (Length xs)
 
 type (≠) :: forall a. a -> a -> Bool
 type family (≠) a b where
-  a ≠ a = False
-  a ≠ b = True
+    a ≠ a = False
+    a ≠ b = True
 
 type RemoveLast :: [a] -> [a]
 type family RemoveLast xs where
-  RemoveLast '[] = TypeError (Text "Tried to remove last element from empty list")
-  RemoveLast (x ': '[]) = '[]
-  RemoveLast (x ': xs) = x : RemoveLast xs
+    RemoveLast '[] = TypeError (Text "Tried to remove last element from empty list")
+    RemoveLast (x ': '[]) = '[]
+    RemoveLast (x ': xs) = x : RemoveLast xs
 
 type a ≁ b = (a ≠ b) ~ True
 
@@ -227,18 +236,18 @@ type family Reverse a b c
 
 type Map :: forall k a. k a -> [a] -> [a]
 type family Map f a where
-  Map f '[] = '[]
-  Map f (x ': xs) = Apply f x ': Map f xs
+    Map f '[] = '[]
+    Map f (x ': xs) = Apply f x ': Map f xs
 
 type MapReverse :: forall k a. k a -> [a] -> [a] -> [a]
 type family MapReverse f a b where
-  MapReverse f '[] _ = '[]
-  MapReverse f (x ': xs) (y ': ys) = Reverse f x y ': MapReverse f xs ys
+    MapReverse f '[] _ = '[]
+    MapReverse f (x ': xs) (y ': ys) = Reverse f x y ': MapReverse f xs ys
 
 type Take :: [a] -> Nat -> [a]
 type family Take xs n where
-  Take _ Z = '[]
-  Take (x ': xs) (S n) = x ': Take xs n
+    Take _ Z = '[]
+    Take (x ': xs) (S n) = x ': Take xs n
 
 data AccessLevel = N | R | X
 
@@ -280,26 +289,26 @@ instance TypeError Msg => X ≤ N
 
 type Max :: AccessLevel -> AccessLevel -> AccessLevel
 type family Max a b where
-  Max X _ = X
-  Max _ X = X
-  Max R _ = R
-  Max _ R = R
-  Max _ _ = N
+    Max X _ = X
+    Max _ X = X
+    Max R _ = R
+    Max _ R = R
+    Max _ _ = N
 
 type family FindEff e effs :: Natural where
-  FindEff e '[] = TypeError (Text "Not found")
-  FindEff e (e  ': eff) = 0
-  FindEff e (e' ': eff) = 1 + FindEff e eff
+    FindEff e '[] = TypeError (Text "Not found")
+    FindEff e (e ': eff) = 0
+    FindEff e (e' ': eff) = 1 + FindEff e eff
 
 type family Write ind p ps where
-  Write _ _ '[]      = TypeError (Text "This sucks")
-  Write 0 p (x : xs) = p : xs
-  Write n p (x : xs) = x : Write (n - 1) p xs
+    Write _ _ '[] = TypeError (Text "This sucks")
+    Write 0 p (x : xs) = p : xs
+    Write n p (x : xs) = x : Write (n - 1) p xs
 
 type family Assume ind ps where
-  Assume _ '[]      = TypeError (Text "This sucks")
-  Assume 0 (x : xs) = x
-  Assume n (x : xs) = Assume (n - 1) xs
+    Assume _ '[] = TypeError (Text "This sucks")
+    Assume 0 (x : xs) = x
+    Assume n (x : xs) = Assume (n - 1) xs
 
 -- inj :: KnownNat n =>
 --   proxy n -> e p q a -> Op effs ps qs a
@@ -309,27 +318,27 @@ type family Assume ind ps where
 --     go 0 = unsafeCoerce OHere op
 --     go n = unsafeCoerce OThere (go (n - 1))
 
-
 class SMember f effs where
-  inj :: f a -> Op effs a
+    inj :: f a -> Op effs a
 
 instance {-# OVERLAPPING #-} SMember e (e ': effs) where
-  -- inj ::
-  --   e () () a ->
-  --   Op (e ': effs) (() ': ps) (() ': ps) a
-  inj :: f a -> Op (f : effs) a
-  inj e = OHere e
+    -- inj ::
+    --   e () () a ->
+    --   Op (e ': effs) (() ': ps) (() ': ps) a
+    inj :: f a -> Op (f : effs) a
+    inj e = OHere e
 
 instance {-# INCOHERENT #-} SMember e effs => SMember e (eff ': effs) where
-  inj = OThere . inj
+    inj = OThere . inj
 
 instance
-  TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
-             Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
-            )
-  => SMember e '[] where
+    TypeError
+        ( Text "Failed to resolve effect " :<>: ShowType e
+            :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+        ) =>
+    SMember e '[]
+    where
     inj = error "The instance of SMember e p q '[] must never be selected"
-
 
 -- class CMember e p q effs pres posts where
 --   injC :: e p q a -> Op effs pres posts a
@@ -359,14 +368,14 @@ instance
 -- instance Test a b where
 --   output _ _ = "Different"
 
-
--- | Find the index of an element in a type-level list.
--- The element must exist
--- This is essentially a compile-time computation.
--- Using overlapping instances here is OK since this class is private to this
--- module
--- class FindElem e p q effs pres posts where
---   inj' :: e p q a -> Op effs pres posts a
+{- | Find the index of an element in a type-level list.
+ The element must exist
+ This is essentially a compile-time computation.
+ Using overlapping instances here is OK since this class is private to this
+ module
+ class FindElem e p q effs pres posts where
+   inj' :: e p q a -> Op effs pres posts a
+-}
 
 -- instance FindElem t (t ': r) where
 --   inj' = Here e
@@ -393,6 +402,6 @@ when True a = a
 foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
 foldM [] c _f = return c
 foldM [x] c f =
-  f x c
+    f x c
 foldM (x : xs) c f =
-  f x c >>= \c' -> foldM xs c' f
+    f x c >>= \c' -> foldM xs c' f

@@ -11,56 +11,57 @@ import Utils
 import Prelude hiding (Monad (..), read)
 
 data ValueType where
-  Actual :: ValueType
-  Slice :: Nat -> ValueType
+    Actual :: ValueType
+    Slice :: Nat -> ValueType
 
--- | @'AToken' t v n@
--- * @t@ is the type we contain
--- * @v@ is the valuetype
--- * @n@ is the index in the AccessList
+{- | @'AToken' t v n@
+ * @t@ is the type we contain
+ * @v@ is the valuetype
+ * @n@ is the index in the AccessList
+-}
 data AToken t v n where
-  AToken :: a -> AToken t v n
+    AToken :: a -> AToken t v n
 
 -- type Array :: forall k. [AccessLevel] -> [AccessLevel] -> Type -> Type
 data Array p q x where
-  Split ::
-    (X ≤ Lookup p n, k ~ Length p) =>
-    AToken t v n ->
-    Int ->
-    Array
-      p
-      (Append (Append (Replace p n N) X) X)
-      (AToken t (Slice n) k, AToken t (Slice n) (S k))
-  Join ::
-    (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
-    AToken t (Slice k) n1 ->
-    AToken t (Slice k) n2 ->
-    Array p (Replace (RemoveLast (RemoveLast p)) k X) ()
-  Malloc ::
-    Int ->
-    t ->
-    Array p (Append p X) (AToken t Actual (Length p))
-  Write ::
-    (X ≤ Lookup p n) =>
-    AToken t v n ->
-    Int ->
-    t ->
-    Array p p ()
-  Read ::
-    (R ≤ Lookup p n) =>
-    AToken t v n ->
-    Int ->
-    Array p p t
-  Length ::
-    (R ≤ Lookup p n) =>
-    AToken t v n ->
-    Array p p Int
-  Wait ::
-    Future a ->
-    Array p p a
-  InjectIO ::
-    IO a ->
-    Array p p a
+    Split ::
+        (X ≤ Lookup p n, k ~ Length p) =>
+        AToken t v n ->
+        Int ->
+        Array
+            p
+            (Append (Append (Replace p n N) X) X)
+            (AToken t (Slice n) k, AToken t (Slice n) (S k))
+    Join ::
+        (X ≤ Lookup p n1, X ≤ Lookup p n2, Lookup p k ~ N) =>
+        AToken t (Slice k) n1 ->
+        AToken t (Slice k) n2 ->
+        Array p (Replace (RemoveLast (RemoveLast p)) k X) ()
+    Malloc ::
+        Int ->
+        t ->
+        Array p (Append p X) (AToken t Actual (Length p))
+    Write ::
+        (X ≤ Lookup p n) =>
+        AToken t v n ->
+        Int ->
+        t ->
+        Array p p ()
+    Read ::
+        (R ≤ Lookup p n) =>
+        AToken t v n ->
+        Int ->
+        Array p p t
+    Length ::
+        (R ≤ Lookup p n) =>
+        AToken t v n ->
+        Array p p Int
+    Wait ::
+        Future a ->
+        Array p p a
+    InjectIO ::
+        IO a ->
+        Array p p a
 
 -- type Thread :: forall k .
 --   ([[AccessLevel]] -> [[AccessLevel]] -> Type -> Type) ->
@@ -68,11 +69,12 @@ data Array p q x where
 --   Type
 
 data Thread m p p' q' q x x' where
-  AFork :: (AcceptableList p1 q1 p2) =>
-    m (p2 : sr1) (q2 : sr2) a ->
-    Thread m (p1:sr1) (p2:sr1) (q2:sr2) (q1:sr2)  a (Future a)
-  -- TODO: sr1 ~ [] is required for the runner
-  AFinish :: m (p:sr1) (q:sr1) () -> Thread m (p:sr1) (p:sr1) (q:sr1) (p:sr1) () ()
+    AFork ::
+        (AcceptableList p1 q1 p2) =>
+        m (p2 : sr1) (q2 : sr2) a ->
+        Thread m (p1 : sr1) (p2 : sr1) (q2 : sr2) (q1 : sr2) a (Future a)
+    -- TODO: sr1 ~ [] is required for the runner
+    AFinish :: m (p : sr1) (q : sr1) () -> Thread m (p : sr1) (p : sr1) (q : sr1) (p : sr1) () ()
 
 -- afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
 afork s = Scope (AFork s) emptyCont
@@ -119,7 +121,6 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 --   write arr 0 1
 --   val <- read arr 0
 --   return val
-
 
 -- runArrays ::
 --   IProg '[Array] Thread '[ p ] '[ q ] a ->
