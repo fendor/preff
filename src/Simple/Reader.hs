@@ -4,19 +4,19 @@ import Utils
 import qualified Utils as I
 
 data Reader e a where
-    Ask :: Reader e e
+  Ask :: Reader e e
 
 ask ::
-    forall e effs f g p.
-    ( SMember (Reader e) effs
-    ) =>
-    IProg effs f g p p e
+  forall e effs f g p.
+  ( SMember (Reader e) effs
+  ) =>
+  IProg effs f g p p e
 ask = Impure (inj Ask) emptyCont
 
 runReader ::
-    e ->
-    IProg (Reader e : effs) IIdentity IVoid p q a ->
-    IProg effs IIdentity IVoid p q a
+  e ->
+  IProg (Reader e : effs) IIdentity IVoid p q a ->
+  IProg effs IIdentity IVoid p q a
 runReader _e (Value a) = I.return a
 runReader e (Impure (OHere Ask) k) = runReader e (runIKleisliTupled k e)
 runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)

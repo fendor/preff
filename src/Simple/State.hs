@@ -7,26 +7,26 @@ import Utils
 import qualified Utils as I
 
 data StateS s x where
-    PutS :: s -> StateS s ()
-    GetS :: StateS s s
-    deriving (Typeable)
+  PutS :: s -> StateS s ()
+  GetS :: StateS s s
+  deriving (Typeable)
 
 getS ::
-    (SMember (StateS s) effs) =>
-    IProg effs f g ps ps s
+  (SMember (StateS s) effs) =>
+  IProg effs f g ps ps s
 getS = Impure (inj GetS) emptyCont
 
 putS ::
-    ( SMember (StateS s) effs
-    ) =>
-    s ->
-    IProg effs f g ps ps ()
+  ( SMember (StateS s) effs
+  ) =>
+  s ->
+  IProg effs f g ps ps ()
 putS s = Impure (inj $ PutS s) emptyCont
 
 runState ::
-    s ->
-    IProg (StateS s : effs) IIdentity IVoid ps qs a ->
-    IProg effs IIdentity IVoid ps qs (s, a)
+  s ->
+  IProg (StateS s : effs) IIdentity IVoid ps qs a ->
+  IProg effs IIdentity IVoid ps qs (s, a)
 runState s (Value a) = I.return (s, a)
 runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
 runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
@@ -35,12 +35,12 @@ runState e (ImpureT cmd k) = ImpureT cmd (IKleisliTupled $ runState e . runIKlei
 runState _ (ScopeT _ _) = error "Impossible, Scope node must never be created"
 
 stateExample ::
-    (SMember (StateS Int) effs) =>
-    IProg effs f g ps ps String
+  (SMember (StateS Int) effs) =>
+  IProg effs f g ps ps String
 stateExample = I.do
-    i <- getS @Int
-    putS (i + i)
-    I.return $ show i
+  i <- getS @Int
+  putS (i + i)
+  I.return $ show i
 
 -- stateWithLocal ::
 --   ( SMember (StateS Int) effs ps ps
