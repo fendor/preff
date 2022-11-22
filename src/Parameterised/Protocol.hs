@@ -5,6 +5,7 @@ module Parameterised.Protocol where
 import Data.Kind
 import Utils
 import qualified Utils as Ix
+import Simple.State
 
 -- type End :: Type
 data End
@@ -12,6 +13,10 @@ data S a
 data R a
 data C a b
 data O a b
+data SL n a
+data CL n a
+data SLU a
+data CLU a
 
 type Protocol ::
   forall k.
@@ -34,6 +39,12 @@ type ProtocolG ::
   Type ->
   Type
 data ProtocolG m p p' q' q x x' where
+  LoopSUnbounded ::
+    m a '[End] (Maybe x) ->
+    ProtocolG m (SLU a : c) a '[End] c (Maybe x) [x]
+  LoopCUnbounded ::
+    m a '[End] x ->
+    ProtocolG m (CLU a : c) a '[End] c x [x]
   Sel1 ::
     m a '[End] x ->
     ProtocolG m (C a b : c) a '[End] c x x
@@ -50,6 +61,8 @@ type family Dual proc where
   Dual (S a : p) = R a : Dual p
   Dual (O a b : c) = C (Dual a) (Dual b) : Dual c
   Dual (C a b : c) = O (Dual a) (Dual b) : Dual c
+  Dual (CLU a : c) = SLU (Dual a) : Dual c
+  Dual (SLU a : c) = CLU (Dual a) : Dual c
   Dual '[End] = '[End]
 
 send ::
@@ -90,6 +103,16 @@ offer ::
   IProg effs f ProtocolG (O a1 b : r) r a2
 offer s1 s2 = ScopeT (Offer s1 s2) emptyCont
 
+loopS ::
+  IProg effs f ProtocolG a '[End] (Maybe x) ->
+  IProg effs f ProtocolG (SLU a: r) r [x]
+loopS act = ScopeT (LoopSUnbounded act) emptyCont
+
+loopC ::
+  IProg effs f ProtocolG a '[End] x ->
+  IProg effs f ProtocolG (CLU a: r) r [x]
+loopC act = ScopeT (LoopCUnbounded act) emptyCont
+
 simpleServer :: IProg effs Protocol g (S Int : R String : k) k String
 simpleServer = Ix.do
   send @Int 5
@@ -100,6 +123,27 @@ simpleClient :: IProg effs Protocol g (R Int : S String : k) k ()
 simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
+
+
+serverLoop :: SMember (StateS Int) effs => IProg effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop = Ix.do
+  loopS $ Ix.do
+    x <- getS
+    send x
+    n :: Int <- recv
+    putS n
+    if n < 10
+      then
+        Ix.return Nothing
+      else
+        Ix.return $ Just n
+
+clientLoop :: IProg effs Protocol ProtocolG (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop = Ix.do
+  loopC $ Ix.do
+    n :: Int <- recv
+    send (n - 1)
+    Ix.return ()
 
 choice ::
   IProg
@@ -178,6 +222,59 @@ connect (ScopeT (Offer act1 _) k1) (ScopeT (Sel1 act2) k2) = Ix.do
 connect (ScopeT (Offer _ act1) k1) (ScopeT (Sel2 act2) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+connect (ScopeT (LoopSUnbounded act1) k1) (ScopeT (LoopCUnbounded act2) k2) = Ix.do
+  (a, b) <- go ([], [])
+  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect act1 act2
+      case a of
+        Nothing -> Ix.return (r1, b:r2)
+        Just a' -> go (a': r1, b:r2)
+
+
 connect _ _ = error "Procol.connect: internal tree error"
 
--- connect _                           _                       = error "Protocol.connect: internal tree error"
+
+connect' ::
+  (Dual p1 ~ p2, Dual p2 ~ p1) =>
+  IProg effs Protocol ProtocolG p1 '[End] a ->
+  IProg effs Protocol ProtocolG p2 '[End] b ->
+  IProg effs IIdentity IVoid () () (a, b)
+connect' (Value x) (Value y) = Ix.return (x, y)
+connect' (ImpureT (Recv) k1) (ImpureT ((Send a)) k2) = connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
+connect' (ImpureT ((Send a)) k1) (ImpureT (Recv) k2) = connect' (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect' (ScopeT (Sel1 act1) k1) (ScopeT (Offer act2 _) k2) = Ix.do
+  (a, b) <- connect' act1 act2
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+connect' (ScopeT (Sel2 act1) k1) (ScopeT (Offer _ act2) k2) = Ix.do
+  (a, b) <- connect' act1 act2
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+connect' (ScopeT (Offer act1 _) k1) (ScopeT (Sel1 act2) k2) = Ix.do
+  (a, b) <- connect' act1 act2
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+connect' (ScopeT (Offer _ act1) k1) (ScopeT (Sel2 act2) k2) = Ix.do
+  (a, b) <- connect' act1 act2
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+connect' (ScopeT (LoopSUnbounded act1) k1) (ScopeT (LoopCUnbounded act2) k2) = Ix.do
+  (a, b) <- go ([], [])
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect' act1 act2
+      case a of
+        Nothing -> Ix.return (r1, b:r2)
+        Just a' -> go (a': r1, b:r2)
+connect' (ScopeT (LoopCUnbounded act1) k1) (ScopeT (LoopSUnbounded act2) k2) = Ix.do
+  (a, b) <- go ([], [])
+  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect' act1 act2
+      case b of
+        Nothing -> Ix.return (a:r1, r2)
+        Just b' -> go (a: r1, b':r2)
+
+connect' (Impure cmd k1) k2 = Impure cmd $ IKleisliTupled $ \x -> connect' (runIKleisliTupled k1 x) k2
+connect' k1 (Impure cmd k2) = Impure cmd $ IKleisliTupled $ \x -> connect' k1 (runIKleisliTupled  k2 x)
+connect' _ _ = error "Procol.connect: internal tree error"
