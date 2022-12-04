@@ -1,5 +1,5 @@
 cabal-version:   3.0
-name:            safe-mutation
+name:            minieff
 version:         0.1.0.0
 license:
 author:          Fendor
@@ -67,16 +67,3 @@ library
   -- ghc-options:      -Wno-unticked-promoted-constructors
   default-language: GHC2021
 
-executable safe-mutation
-  import:           warnings, exts
-  main-is:          Main.hs
-  build-depends:
-    , base
-    , safe-mutation
-    , safe-mutation-plugin
-
-  -- Directories containing source files.
-  hs-source-dirs:   exe
-
-  -- Base language which the package is written in.
-  default-language: GHC2021
