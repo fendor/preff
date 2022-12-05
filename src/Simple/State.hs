@@ -12,16 +12,16 @@ data StateS s x where
   deriving (Typeable)
 
 getS ::
-  (SMember (StateS s) effs) =>
+  (Member (StateS s) effs) =>
   MiniEff effs f g ps ps s
-getS = Impure (inj GetS) emptyCont
+getS = send GetS
 
 putS ::
-  ( SMember (StateS s) effs
+  ( Member (StateS s) effs
   ) =>
   s ->
   MiniEff effs f g ps ps ()
-putS s = Impure (inj $ PutS s) emptyCont
+putS s = send $ PutS s
 
 runState ::
   s ->
@@ -35,7 +35,7 @@ runState e (ImpureT cmd k) = ImpureT cmd (IKleisliTupled $ runState e . runIKlei
 runState _ (ScopeT _ _) = error "Impossible, Scope node must never be created"
 
 stateExample ::
-  (SMember (StateS Int) effs) =>
+  (Member (StateS Int) effs) =>
   MiniEff effs f g ps ps String
 stateExample = I.do
   i <- getS @Int
@@ -43,7 +43,7 @@ stateExample = I.do
   I.return $ show i
 
 -- stateWithLocal ::
---   ( SMember (StateS Int) effs ps ps
+--   ( Member (StateS Int) effs ps ps
 --   , g ~ StateG Int
 --   ) =>
 --   MiniEff effs g ps ps String
@@ -52,10 +52,10 @@ stateExample = I.do
 --   x <- modifyG (+ n) stateExample
 --   return $ x ++ ", initial: " ++ show n
 
--- -- ambiguityExample :: forall effs ps qs g . SMember (StateS Int) effs ps qs => MiniEff effs g ps qs Int
+-- -- ambiguityExample :: forall effs ps qs g . Member (StateS Int) effs ps qs => MiniEff effs g ps qs Int
 
 ambiguityExample ::
-  (SMember (StateS Int) effs) =>
+  (Member (StateS Int) effs) =>
   MiniEff effs f g ps ps Int
 ambiguityExample = I.do
   i <- getS
@@ -64,8 +64,8 @@ ambiguityExample = I.do
   I.return $ i + i2
 
 moreExamples ::
-  ( SMember (StateS Int) effs
-  , SMember (StateS String) effs
+  ( Member (StateS Int) effs
+  , Member (StateS String) effs
   ) =>
   MiniEff effs f g ps ps Int
 moreExamples = I.do

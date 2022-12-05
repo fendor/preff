@@ -109,7 +109,7 @@ genericState ::
 genericState = undefined
 
 -- putA ::
---   ( SMember StateA () q effs ps qs
+--   ( Member StateA () q effs ps qs
 --   ) =>
 --   q ->
 --   MiniEff effs g ps qs ()

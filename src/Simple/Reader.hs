@@ -8,10 +8,10 @@ data Reader e a where
 
 ask ::
   forall e effs f g p.
-  ( SMember (Reader e) effs
+  ( Member (Reader e) effs
   ) =>
   MiniEff effs f g p p e
-ask = Impure (inj Ask) emptyCont
+ask = send Ask
 
 runReader ::
   e ->

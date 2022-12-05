@@ -127,7 +127,7 @@ runArrays prog = P.do
   P.pure ()
 
 runArraysH ::
-  SMember IIO effs =>
+  Member IIO effs =>
   MiniEff effs Array Thread p q a ->
   MiniEff effs IIdentity IVoid () () [TMVar ()]
 runArraysH (Value _a) = I.return []

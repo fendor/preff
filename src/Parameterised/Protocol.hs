@@ -3,7 +3,7 @@
 module Parameterised.Protocol where
 
 import Data.Kind
-import Utils
+import Utils hiding (send)
 import qualified Utils as Ix
 import Simple.State
 
@@ -69,13 +69,13 @@ send ::
   forall a effs g p.
   a ->
   MiniEff effs Protocol g (S a : p) p ()
-send a = ImpureT ((Send a)) (IKleisliTupled Utils.return)
+send a = sendS (Send a)
 
 -- recv :: MiniEff (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv ::
   forall a p effs g.
   MiniEff effs Protocol g (R a : p) p a
-recv = ImpureT (Recv) (IKleisliTupled Utils.return)
+recv = sendS Recv
 
 -- sel1 ::
 --     MiniEff effs f ProtocolG '[a] '[End] a ->
@@ -83,7 +83,7 @@ recv = ImpureT (Recv) (IKleisliTupled Utils.return)
 sel1 ::
   MiniEff effs f ProtocolG p' '[End] a ->
   MiniEff effs f ProtocolG (C p' b : r) r a
-sel1 act = ScopeT (Sel1 act) (IKleisliTupled Utils.return)
+sel1 act = sendScoped (Sel1 act)
 
 -- sel2 ::
 --     MiniEff effs f ProtocolG b End a2 ->
@@ -91,7 +91,7 @@ sel1 act = ScopeT (Sel1 act) (IKleisliTupled Utils.return)
 sel2 ::
   MiniEff effs f ProtocolG p' '[End] a1 ->
   MiniEff effs f ProtocolG (C a2 p' : r) r a1
-sel2 act = ScopeT (Sel2 act) (IKleisliTupled Utils.return)
+sel2 act = sendScoped (Sel2 act)
 
 -- offer ::
 --     MiniEff effs f ProtocolG a End a2 ->
@@ -101,17 +101,17 @@ offer ::
   MiniEff effs f ProtocolG a1 '[End] a2 ->
   MiniEff effs f ProtocolG b '[End] a2 ->
   MiniEff effs f ProtocolG (O a1 b : r) r a2
-offer s1 s2 = ScopeT (Offer s1 s2) emptyCont
+offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
   MiniEff effs f ProtocolG a '[End] (Maybe x) ->
   MiniEff effs f ProtocolG (SLU a: r) r [x]
-loopS act = ScopeT (LoopSUnbounded act) emptyCont
+loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
   MiniEff effs f ProtocolG a '[End] x ->
   MiniEff effs f ProtocolG (CLU a: r) r [x]
-loopC act = ScopeT (LoopCUnbounded act) emptyCont
+loopC act = sendScoped (LoopCUnbounded act)
 
 simpleServer :: MiniEff effs Protocol g (S Int : R String : k) k String
 simpleServer = Ix.do
@@ -125,7 +125,7 @@ simpleClient = Ix.do
   send (show $ n * 25)
 
 
-serverLoop :: SMember (StateS Int) effs => MiniEff effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (StateS Int) effs => MiniEff effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- getS

@@ -146,6 +146,15 @@ run (Impure _cmd _k) = error "Impossible"
 run (ImpureT cmd k) = run $ runIKleisliTupled k (runIIdentity cmd)
 run (ScopeT _ _) = error "Impossible"
 
+send :: Member f eff => f a -> MiniEff eff s g p p a
+send f = Impure (inj f) emptyCont
+
+sendS :: s p q a -> MiniEff eff s g p q a
+sendS f = ImpureT f emptyCont
+
+sendScoped :: g (MiniEff eff s g) p p' q' q x' x -> MiniEff eff s g p q x
+sendScoped g = ScopeT g emptyCont
+
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
@@ -166,7 +175,7 @@ runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopeT _ _) = error "Impossible"
 
-embedIO :: SMember IIO effs => IO a -> MiniEff effs f g p p a
+embedIO :: Member IIO effs => IO a -> MiniEff effs f g p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont
 
 -- ------------------------------------------------
@@ -322,17 +331,17 @@ type family Assume ind ps where
 --     go 0 = unsafeCoerce OHere op
 --     go n = unsafeCoerce OThere (go (n - 1))
 
-class SMember f effs where
+class Member f effs where
   inj :: f a -> Op effs a
 
-instance {-# OVERLAPPING #-} SMember e (e ': effs) where
+instance {-# OVERLAPPING #-} Member e (e ': effs) where
   -- inj ::
   --   e () () a ->
   --   Op (e ': effs) (() ': ps) (() ': ps) a
   inj :: f a -> Op (f : effs) a
   inj e = OHere e
 
-instance {-# INCOHERENT #-} SMember e effs => SMember e (eff ': effs) where
+instance {-# INCOHERENT #-} Member e effs => Member e (eff ': effs) where
   inj = OThere . inj
 
 instance
@@ -340,9 +349,9 @@ instance
     ( Text "Failed to resolve effect " :<>: ShowType e
         :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
     ) =>
-  SMember e '[]
+  Member e '[]
   where
-  inj = error "The instance of SMember e p q '[] must never be selected"
+  inj = error "The instance of Member e p q '[] must never be selected"
 
 -- class CMember e p q effs pres posts where
 --   injC :: e p q a -> Op effs pres posts a
@@ -361,7 +370,7 @@ instance
 --              Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
 --             )
 --   => CMember e p q '[] '[] '[] where
---     injC = error "The instance of SMember e p q '[] '[] '[] must never be selected"
+--     injC = error "The instance of Member e p q '[] '[] '[] must never be selected"
 
 -- class Test a b where
 --   output :: a -> b -> String

@@ -34,7 +34,7 @@ length a = ImpureT (Length a) $ IKleisliTupled return
 read a b = ImpureT (Read a b) $ IKleisliTupled return
 
 runSerialArrays ::
-  (SMember IIO effs) =>
+  (Member IIO effs) =>
   MiniEff effs Array IVoid p q a ->
   MiniEff effs IIdentity IVoid () () a
 runSerialArrays (Value a) = return a
