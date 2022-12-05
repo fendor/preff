@@ -12,7 +12,7 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
-type IProg ::
+type MiniEff ::
   forall k.
   [Type -> Type] ->
   (k -> k -> Type -> Type) ->
@@ -21,49 +21,49 @@ type IProg ::
   k ->
   Type ->
   Type
-data IProg effs f g p q a where
-  Value :: a -> IProg effs f g p p a
+data MiniEff effs f g p q a where
+  Value :: a -> MiniEff effs f g p p a
   Impure ::
     Op effs x ->
-    IKleisliTupled (IProg effs f g) '(p, x) '(r, a) ->
-    IProg effs f g p r a
+    IKleisliTupled (MiniEff effs f g) '(p, x) '(r, a) ->
+    MiniEff effs f g p r a
   ImpureT ::
     f p q x ->
-    -- IProg f g p' q' x ->
-    IKleisliTupled (IProg effs f g) '(q, x) '(r, a) ->
-    -- (x' -> IProg f g q r a) ->
-    IProg effs f g p r a
+    -- MiniEff f g p' q' x ->
+    IKleisliTupled (MiniEff effs f g) '(q, x) '(r, a) ->
+    -- (x' -> MiniEff f g q r a) ->
+    MiniEff effs f g p r a
   ScopeT ::
-    g (IProg effs f g) p p' q' q x x' ->
-    -- IProg f g p' q' x ->
-    IKleisliTupled (IProg effs f g) '(q, x') '(r, a) ->
-    -- (x' -> IProg f g q r a) ->
-    IProg effs f g p r a
+    g (MiniEff effs f g) p p' q' q x x' ->
+    -- MiniEff f g p' q' x ->
+    IKleisliTupled (MiniEff effs f g) '(q, x') '(r, a) ->
+    -- (x' -> MiniEff f g q r a) ->
+    MiniEff effs f g p r a
 
-instance Functor (IProg effs f g p q) where
+instance Functor (MiniEff effs f g p q) where
   fmap f (Value a) = Value $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
   fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
   fmap f (ScopeT op k) = ScopeT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
-instance IFunctor (IProg effs f g) where
+instance IFunctor (MiniEff effs f g) where
   imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (ScopeT op k) = ScopeT op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
-instance IApplicative (IProg effs f g) where
+instance IApplicative (MiniEff effs f g) where
   pure = Value
   (Value f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   ScopeT fop k' <*> k = ScopeT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (IProg effs f g) where
-  return :: a -> IProg effs f g i i a
+instance IMonad (MiniEff effs f g) where
+  return :: a -> MiniEff effs f g i i a
   return = Value
 
-  (>>=) :: IProg effs f g i j a -> (a -> IProg effs f g j k b) -> IProg effs f g i k b
+  (>>=) :: MiniEff effs f g i j a -> (a -> MiniEff effs f g j k b) -> MiniEff effs f g i k b
   (Value a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
   (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
@@ -140,7 +140,7 @@ type IVoid ::
   Type
 data IVoid m p p' q' q x x'
 
-run :: IProg '[] IIdentity IVoid p q a -> a
+run :: MiniEff '[] IIdentity IVoid p q a -> a
 run (Value a) = a
 run (Impure _cmd _k) = error "Impossible"
 run (ImpureT cmd k) = run $ runIKleisliTupled k (runIIdentity cmd)
@@ -159,14 +159,14 @@ runIIdentity (IIdentity a) = a
 data IIO a where
   RunIO :: IO a -> IIO a
 
-runIO :: IProg '[IIO] IIdentity IVoid p q a -> IO a
+runIO :: MiniEff '[IIO] IIdentity IVoid p q a -> IO a
 runIO (Value a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopeT _ _) = error "Impossible"
 
-embedIO :: SMember IIO effs => IO a -> IProg effs f g p p a
+embedIO :: SMember IIO effs => IO a -> MiniEff effs f g p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont
 
 -- ------------------------------------------------

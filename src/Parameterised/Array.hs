@@ -80,7 +80,7 @@ data Thread m p p' q' q x x' where
   -- TODO: sr1 ~ [] is required for the runner
   AFinish :: m p q () -> Thread m p p q p () ()
 
--- afork :: AcceptableList p r p' => IProg f Thread p' q' x -> IProg f Thread p r (Future x)
+-- afork :: AcceptableList p r p' => MiniEff f Thread p' q' x -> MiniEff f Thread p r (Future x)
 afork s = ScopeT (AFork s) emptyCont
 
 afinish s = ScopeT (AFinish s) emptyCont
@@ -120,7 +120,7 @@ unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n ->
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 runArrays ::
-  IProg '[IIO] Array Thread p q a ->
+  MiniEff '[IIO] Array Thread p q a ->
   IO ()
 runArrays prog = P.do
   _ <- runIO $ runArraysH prog
@@ -128,8 +128,8 @@ runArrays prog = P.do
 
 runArraysH ::
   SMember IIO effs =>
-  IProg effs Array Thread p q a ->
-  IProg effs IIdentity IVoid () () [TMVar ()]
+  MiniEff effs Array Thread p q a ->
+  MiniEff effs IIdentity IVoid () () [TMVar ()]
 runArraysH (Value _a) = I.return []
 runArraysH (ImpureT (Malloc i (a :: b)) c) =
   let upper = i - 1

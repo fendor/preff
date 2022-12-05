@@ -46,16 +46,16 @@ data StateA p q a where
 
 putAI ::
   p ->
-  IProg effs StateA g q p ()
+  MiniEff effs StateA g q p ()
 putAI p = ImpureT (PutA p) emptyCont
 
 getAI ::
-  IProg effs StateA g p p p
+  MiniEff effs StateA g p p p
 getAI = ImpureT (GetA) emptyCont
 
 stateChangeExp ::
-  IProg effs StateA StateAG String Int String
--- stateChangeExp :: IProg '[StateA] StateAG '[String] '[Int] String
+  MiniEff effs StateA StateAG String Int String
+-- stateChangeExp :: MiniEff '[StateA] StateAG '[String] '[Int] String
 stateChangeExp = Ix.do
   s <- getAI
   -- putAI ("Test" :: String)
@@ -68,8 +68,8 @@ runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
 
 localAG' ::
   (p -> p') ->
-  IProg effs f StateAG p' q' a ->
-  IProg effs f StateAG p p a
+  MiniEff effs f StateAG p' q' a ->
+  MiniEff effs f StateAG p p a
 localAG' f act = ScopeT (LocalAG f act) emptyCont
 
 data StateAG m p p' q' q x x' where
@@ -80,8 +80,8 @@ data StateAG m p p' q' q x x' where
 
 runStateAIG ::
   p ->
-  IProg eff StateA StateAG p q a ->
-  IProg eff IIdentity IVoid () () (a, q)
+  MiniEff eff StateA StateAG p q a ->
+  MiniEff eff IIdentity IVoid () () (a, q)
 runStateAIG p (Value x) = Ix.return (x, p)
 runStateAIG p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
 runStateAIG p (ImpureT GetA k) =
@@ -94,8 +94,8 @@ runStateAIG p (ScopeT (LocalAG f m) k) = Ix.do
 
 runStateAI ::
   p ->
-  IProg eff StateA IVoid p q a ->
-  IProg eff IIdentity IVoid () () (a, q)
+  MiniEff eff StateA IVoid p q a ->
+  MiniEff eff IIdentity IVoid () () (a, q)
 runStateAI p (Value x) = Ix.return (x, p)
 runStateAI p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAI p $ runIKleisliTupled k x
 runStateAI p (ImpureT GetA k) =
@@ -105,12 +105,12 @@ runStateAI _ (ImpureT (PutA q) k) =
 runStateAI _p (ScopeT _ _) = error "GHC is not exhaustive"
 
 genericState ::
-  IProg effs f g p q ()
+  MiniEff effs f g p q ()
 genericState = undefined
 
 -- putA ::
 --   ( SMember StateA () q effs ps qs
 --   ) =>
 --   q ->
---   IProg effs g ps qs ()
+--   MiniEff effs g ps qs ()
 -- putA q = Impure (inj (PutA q) :: Op effs ps qs ()) emptyCont

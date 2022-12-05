@@ -12,7 +12,7 @@ import Prelude hiding (Monad (..), (=<<))
 newtype Task = Task ()
 newtype Machine = Machine ()
 
-run :: Task -> Machine -> IProg StateF StateG p p ()
+run :: Task -> Machine -> MiniEff StateF StateG p p ()
 run = undefined
 
 machineInit :: Machine
@@ -25,7 +25,7 @@ task2 = undefined
 (=<<) :: (IMonad m) => ((a -> m j k b) -> m i j a -> m i k b)
 (=<<) = flip (>>=)
 
-lazyInit :: ( 'R ≤ Lookup j n, 'X ≤ Lookup j n) => Token (Maybe Machine) n -> IProg StateF g j j Machine
+lazyInit :: ( 'R ≤ Lookup j n, 'X ≤ Lookup j n) => Token (Maybe Machine) n -> MiniEff StateF g j j Machine
 lazyInit cache = do
   get cache >>= \case
     Just machine -> do
@@ -36,7 +36,7 @@ lazyInit cache = do
       put cache (Just machine)
       return machine
 
-runMultipleTasks :: IProg StateF StateG i k ()
+runMultipleTasks :: MiniEff StateF StateG i k ()
 runMultipleTasks = do
   cache <- alloc Nothing
   _ <- fork (run task1 =<< lazyInit cache)
@@ -56,14 +56,14 @@ transfer ::
   Token a n1 ->
   Token a n2 ->
   a ->
-  IProg StateF g k k ()
+  MiniEff StateF g k k ()
 transfer sender recipient amount = do
   v_sender <- get sender
   v_recipient <- get recipient
   put sender (v_sender - amount)
   put recipient (v_recipient + amount)
 
-racyBank :: IProg StateF StateG i k (Future ())
+racyBank :: MiniEff StateF StateG i k (Future ())
 racyBank = do
   alice <- alloc (pounds 10)
   bob <- alloc (pounds 10)
@@ -71,7 +71,7 @@ racyBank = do
 
 --fork (transfer alice bob (pounds 5))
 
-test :: IProg StateF StateG i k ()
+test :: MiniEff StateF StateG i k ()
 test = do
   a <- alloc False
   put a True

@@ -68,64 +68,64 @@ type family Dual proc where
 send ::
   forall a effs g p.
   a ->
-  IProg effs Protocol g (S a : p) p ()
+  MiniEff effs Protocol g (S a : p) p ()
 send a = ImpureT ((Send a)) (IKleisliTupled Utils.return)
 
--- recv :: IProg (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
+-- recv :: MiniEff (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv ::
   forall a p effs g.
-  IProg effs Protocol g (R a : p) p a
+  MiniEff effs Protocol g (R a : p) p a
 recv = ImpureT (Recv) (IKleisliTupled Utils.return)
 
 -- sel1 ::
---     IProg effs f ProtocolG '[a] '[End] a ->
---     IProg effs f ProtocolG (C a b : r) r a
+--     MiniEff effs f ProtocolG '[a] '[End] a ->
+--     MiniEff effs f ProtocolG (C a b : r) r a
 sel1 ::
-  IProg effs f ProtocolG p' '[End] a ->
-  IProg effs f ProtocolG (C p' b : r) r a
+  MiniEff effs f ProtocolG p' '[End] a ->
+  MiniEff effs f ProtocolG (C p' b : r) r a
 sel1 act = ScopeT (Sel1 act) (IKleisliTupled Utils.return)
 
 -- sel2 ::
---     IProg effs f ProtocolG b End a2 ->
---     IProg effs f ProtocolG (C a b) r a2
+--     MiniEff effs f ProtocolG b End a2 ->
+--     MiniEff effs f ProtocolG (C a b) r a2
 sel2 ::
-  IProg effs f ProtocolG p' '[End] a1 ->
-  IProg effs f ProtocolG (C a2 p' : r) r a1
+  MiniEff effs f ProtocolG p' '[End] a1 ->
+  MiniEff effs f ProtocolG (C a2 p' : r) r a1
 sel2 act = ScopeT (Sel2 act) (IKleisliTupled Utils.return)
 
 -- offer ::
---     IProg effs f ProtocolG a End a2 ->
---     IProg effs f ProtocolG b End a2 ->
---     IProg effs f ProtocolG (O a b : c) c a2
+--     MiniEff effs f ProtocolG a End a2 ->
+--     MiniEff effs f ProtocolG b End a2 ->
+--     MiniEff effs f ProtocolG (O a b : c) c a2
 offer ::
-  IProg effs f ProtocolG a1 '[End] a2 ->
-  IProg effs f ProtocolG b '[End] a2 ->
-  IProg effs f ProtocolG (O a1 b : r) r a2
+  MiniEff effs f ProtocolG a1 '[End] a2 ->
+  MiniEff effs f ProtocolG b '[End] a2 ->
+  MiniEff effs f ProtocolG (O a1 b : r) r a2
 offer s1 s2 = ScopeT (Offer s1 s2) emptyCont
 
 loopS ::
-  IProg effs f ProtocolG a '[End] (Maybe x) ->
-  IProg effs f ProtocolG (SLU a: r) r [x]
+  MiniEff effs f ProtocolG a '[End] (Maybe x) ->
+  MiniEff effs f ProtocolG (SLU a: r) r [x]
 loopS act = ScopeT (LoopSUnbounded act) emptyCont
 
 loopC ::
-  IProg effs f ProtocolG a '[End] x ->
-  IProg effs f ProtocolG (CLU a: r) r [x]
+  MiniEff effs f ProtocolG a '[End] x ->
+  MiniEff effs f ProtocolG (CLU a: r) r [x]
 loopC act = ScopeT (LoopCUnbounded act) emptyCont
 
-simpleServer :: IProg effs Protocol g (S Int : R String : k) k String
+simpleServer :: MiniEff effs Protocol g (S Int : R String : k) k String
 simpleServer = Ix.do
   send @Int 5
   s <- recv @String
   Ix.return s
 
-simpleClient :: IProg effs Protocol g (R Int : S String : k) k ()
+simpleClient :: MiniEff effs Protocol g (R Int : S String : k) k ()
 simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
 
-serverLoop :: SMember (StateS Int) effs => IProg effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: SMember (StateS Int) effs => MiniEff effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- getS
@@ -138,7 +138,7 @@ serverLoop = Ix.do
       else
         Ix.return $ Just n
 
-clientLoop :: IProg effs Protocol ProtocolG (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: MiniEff effs Protocol ProtocolG (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -146,7 +146,7 @@ clientLoop = Ix.do
     Ix.return ()
 
 choice ::
-  IProg
+  MiniEff
     effs
     Protocol
     ProtocolG
@@ -160,7 +160,7 @@ choice = Ix.do
     Ix.return n
 
 andOffer ::
-  IProg
+  MiniEff
     effs
     Protocol
     ProtocolG
@@ -179,7 +179,7 @@ andOffer = Ix.do
   Ix.return ()
 
 choice2 ::
-  IProg
+  MiniEff
     effs
     Protocol
     ProtocolG
@@ -204,9 +204,9 @@ choice2 = Ix.do
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  IProg '[] Protocol ProtocolG p1 '[End] a ->
-  IProg '[] Protocol ProtocolG p2 '[End] b ->
-  IProg '[] IIdentity IVoid () () (a, b)
+  MiniEff '[] Protocol ProtocolG p1 '[End] a ->
+  MiniEff '[] Protocol ProtocolG p2 '[End] b ->
+  MiniEff '[] IIdentity IVoid () () (a, b)
 connect (Value x) (Value y) = Ix.return (x, y)
 connect (ImpureT (Recv) k1) (ImpureT ((Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect (ImpureT ((Send a)) k1) (ImpureT (Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
@@ -238,9 +238,9 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  IProg effs Protocol ProtocolG p1 '[End] a ->
-  IProg effs Protocol ProtocolG p2 '[End] b ->
-  IProg effs IIdentity IVoid () () (a, b)
+  MiniEff effs Protocol ProtocolG p1 '[End] a ->
+  MiniEff effs Protocol ProtocolG p2 '[End] b ->
+  MiniEff effs IIdentity IVoid () () (a, b)
 connect' (Value x) (Value y) = Ix.return (x, y)
 connect' (ImpureT (Recv) k1) (ImpureT ((Send a)) k2) = connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect' (ImpureT ((Send a)) k1) (ImpureT (Recv) k2) = connect' (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
