@@ -21,9 +21,9 @@ data StateF p q x where
     t ->
     StateF p p ()
 
-data StateG m p p' q' q x x' where
-  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> StateG m p1 p2 q2 q1 a (Future a)
-  Finish :: m p2 q2 a -> StateG m p p q p a a
+data instance ScopeT StateF m p p' q' q x x' where
+  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeT StateF m p1 p2 q2 q1 a (Future a)
+  Finish :: m p2 q2 a -> ScopeT StateF m p p q p a a
 
 type Token :: Type -> Ix.Nat -> Type
 newtype Token t n = Token ()
@@ -36,25 +36,25 @@ alloc a = Impure (OHere $ Alloc a) emptyCont
 
 get a = Impure (OHere $ Get a) emptyCont
 
-fork s = ScopeT (Fork s) emptyCont
+fork s = ScopedT (Fork s) emptyCont
 
-finish s = ScopeT (Finish s) emptyCont
+finish s = ScopedT (Finish s) emptyCont
 
-data StateA p q a where
-  PutA :: x -> StateA p x ()
-  GetA :: StateA p p p
+data StateP p q a where
+  PutP :: x -> StateP p x ()
+  GetP :: StateP p p p
 
 putAI ::
   p ->
-  MiniEff effs StateA g q p ()
-putAI p = ImpureT (PutA p) emptyCont
+  MiniEff effs StateP q p ()
+putAI p = ImpureT (PutP p) emptyCont
 
 getAI ::
-  MiniEff effs StateA g p p p
-getAI = ImpureT (GetA) emptyCont
+  MiniEff effs StateP p p p
+getAI = ImpureT (GetP) emptyCont
 
 stateChangeExp ::
-  MiniEff effs StateA StateAG String Int String
+  MiniEff effs StateP String Int String
 -- stateChangeExp :: MiniEff '[StateA] StateAG '[String] '[Int] String
 stateChangeExp = Ix.do
   s <- getAI
@@ -68,44 +68,44 @@ runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
 
 localAG' ::
   (p -> p') ->
-  MiniEff effs f StateAG p' q' a ->
-  MiniEff effs f StateAG p p a
-localAG' f act = ScopeT (LocalAG f act) emptyCont
+  MiniEff effs StateP p' q' a ->
+  MiniEff effs StateP p p a
+localAG' f act = ScopedT (LocalAG f act) emptyCont
 
-data StateAG m p p' q' q x x' where
+data instance ScopeT StateP m p p' q' q x x' where
   LocalAG ::
     (p -> p') ->
     m p' q' x ->
-    StateAG m p p' q' p x x
+    ScopeT StateP m p p' q' p x x
 
 runStateAIG ::
   p ->
-  MiniEff eff StateA StateAG p q a ->
-  MiniEff eff IIdentity IVoid () () (a, q)
+  MiniEff eff StateP p q a ->
+  MiniEff eff IVoid () () (a, q)
 runStateAIG p (Value x) = Ix.return (x, p)
 runStateAIG p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
-runStateAIG p (ImpureT GetA k) =
+runStateAIG p (ImpureT GetP k) =
   runStateAIG p (runIKleisliTupled k p)
-runStateAIG _ (ImpureT (PutA q) k) =
+runStateAIG _ (ImpureT (PutP q) k) =
   runStateAIG q (runIKleisliTupled k ())
-runStateAIG p (ScopeT (LocalAG f m) k) = Ix.do
+runStateAIG p (ScopedT (LocalAG f m) k) = Ix.do
   (x, _q) <- runStateAIG (f p) m
   runStateAIG p (runIKleisliTupled k x)
 
 runStateAI ::
   p ->
-  MiniEff eff StateA IVoid p q a ->
-  MiniEff eff IIdentity IVoid () () (a, q)
+  MiniEff eff StateP p q a ->
+  MiniEff eff IVoid () () (a, q)
 runStateAI p (Value x) = Ix.return (x, p)
 runStateAI p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAI p $ runIKleisliTupled k x
-runStateAI p (ImpureT GetA k) =
+runStateAI p (ImpureT GetP k) =
   runStateAI p (runIKleisliTupled k p)
-runStateAI _ (ImpureT (PutA q) k) =
+runStateAI _ (ImpureT (PutP q) k) =
   runStateAI q (runIKleisliTupled k ())
-runStateAI _p (ScopeT _ _) = error "GHC is not exhaustive"
+runStateAI _p (ScopedT _ _) = error "GHC is not exhaustive"
 
 genericState ::
-  MiniEff effs f g p q ()
+  MiniEff effs f p q ()
 genericState = undefined
 
 -- putA ::

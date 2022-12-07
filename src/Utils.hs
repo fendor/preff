@@ -12,62 +12,92 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
+
+-- type Op :: forall k.
+--   [k -> k -> Type -> Type] ->
+--   [k] ->
+--   [k] ->
+--   Type ->
+--   Type
+-- data Op effs t1 t2 x where
+--   OHere ::
+--     forall x f1 effs sl1 sl2 sr1 sr2 .
+--     f1 sl1 sl2 x ->
+--     Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
+--   OThere ::
+--     forall x eff effs sr1 sr2 sl1 sl2 .
+--     Op effs sr1 sr2 x ->
+--     Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
+--   deriving (Typeable)
+
+-- Less general instance, note the entries sl and sr in the type level list
+type Op ::
+  [Type -> Type] ->
+  Type ->
+  Type
+data Op f x where
+  OHere :: f x -> Op (f : effs) x
+  OThere :: Op effs x -> Op (eff : effs) x
+
+
 type MiniEff ::
   forall k.
   [Type -> Type] ->
   (k -> k -> Type -> Type) ->
-  ((k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type) ->
   k ->
   k ->
   Type ->
   Type
-data MiniEff effs f g p q a where
-  Value :: a -> MiniEff effs f g p p a
+data MiniEff effs f p q a where
+  Value :: a -> MiniEff effs f p p a
   Impure ::
     Op effs x ->
-    IKleisliTupled (MiniEff effs f g) '(p, x) '(r, a) ->
-    MiniEff effs f g p r a
+    IKleisliTupled (MiniEff effs f) '(p, x) '(r, a) ->
+    MiniEff effs f p r a
   ImpureT ::
     f p q x ->
     -- MiniEff f g p' q' x ->
-    IKleisliTupled (MiniEff effs f g) '(q, x) '(r, a) ->
+    IKleisliTupled (MiniEff effs f) '(q, x) '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
-    MiniEff effs f g p r a
-  ScopeT ::
-    g (MiniEff effs f g) p p' q' q x x' ->
+    MiniEff effs f p r a
+  ScopedT ::
+    ScopeT f (MiniEff effs f) p p' q' q x x' ->
     -- MiniEff f g p' q' x ->
-    IKleisliTupled (MiniEff effs f g) '(q, x') '(r, a) ->
+    IKleisliTupled (MiniEff effs f) '(q, x') '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
-    MiniEff effs f g p r a
+    MiniEff effs f p r a
 
-instance Functor (MiniEff effs f g p q) where
+type ScopeT :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
+data family ScopeT f -- :: forall k . (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
+
+instance Functor (MiniEff effs f p q) where
   fmap f (Value a) = Value $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
   fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (ScopeT op k) = ScopeT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (ScopedT op k) = ScopedT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
-instance IFunctor (MiniEff effs f g) where
+instance IFunctor (MiniEff effs f) where
   imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ScopeT op k) = ScopeT op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (ScopedT op k) = ScopedT op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
-instance IApplicative (MiniEff effs f g) where
+instance IApplicative (MiniEff effs f) where
   pure = Value
   (Value f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  ScopeT fop k' <*> k = ScopeT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  ScopedT fop k' <*> k = ScopedT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (MiniEff effs f g) where
-  return :: a -> MiniEff effs f g i i a
+instance IMonad (MiniEff effs f) where
+  return :: a -> MiniEff effs f i i a
   return = Value
 
-  (>>=) :: MiniEff effs f g i j a -> (a -> MiniEff effs f g j k b) -> MiniEff effs f g i k b
+  (>>=) :: MiniEff effs f i j a -> (a -> MiniEff effs f j k b) -> MiniEff effs f i k b
   (Value a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
   (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ScopeT g k) >>= f = ScopeT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ScopedT g k) >>= f = ScopedT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -102,80 +132,50 @@ transformKleisli ::
   IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
--- type Op :: forall k.
---   [k -> k -> Type -> Type] ->
---   [k] ->
---   [k] ->
---   Type ->
---   Type
--- data Op effs t1 t2 x where
---   OHere ::
---     forall x f1 effs sl1 sl2 sr1 sr2 .
---     f1 sl1 sl2 x ->
---     Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   OThere ::
---     forall x eff effs sr1 sr2 sl1 sl2 .
---     Op effs sr1 sr2 x ->
---     Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   deriving (Typeable)
-
--- Less general instance, note the entries sl and sr in the type level list
-type Op ::
-  [Type -> Type] ->
-  Type ->
-  Type
-data Op f x where
-  OHere :: f x -> Op (f : effs) x
-  OThere :: Op effs x -> Op (eff : effs) x
-
-type IVoid ::
-  forall k.
-  (k -> k -> Type -> Type) ->
-  k ->
-  k ->
-  k ->
-  k ->
-  Type ->
-  Type ->
-  Type
-data IVoid m p p' q' q x x'
-
-run :: MiniEff '[] IIdentity IVoid p q a -> a
+run :: MiniEff '[] IVoid p q a -> a
 run (Value a) = a
 run (Impure _cmd _k) = error "Impossible"
-run (ImpureT cmd k) = run $ runIKleisliTupled k (runIIdentity cmd)
-run (ScopeT _ _) = error "Impossible"
+run (ImpureT _cmd _k) = error "Impssouble" -- run $ runIKleisliTupled k (runIIdentity cmd)
+run (ScopedT _ _) = error "Impossible"
 
-send :: Member f eff => f a -> MiniEff eff s g p p a
+send :: Member f eff => f a -> MiniEff eff s p p a
 send f = Impure (inj f) emptyCont
 
-sendS :: s p q a -> MiniEff eff s g p q a
+sendS :: s p q a -> MiniEff eff s p q a
 sendS f = ImpureT f emptyCont
 
-sendScoped :: g (MiniEff eff s g) p p' q' q x' x -> MiniEff eff s g p q x
-sendScoped g = ScopeT g emptyCont
+sendScoped :: ScopeT s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
+sendScoped g = ScopedT g emptyCont
+
+class ScopedEffect f where
+  hmap :: (forall x . m x -> n x) ->  m a -> f n a
+
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
 
-data IIdentity p q a where
-  IIdentity :: a -> IIdentity p q a
+-- data IIdentity p q a where
+--  IIdentity :: a -> IIdentity p q a
+data IVoid p q a where
 
-runIIdentity :: IIdentity p q a -> a
-runIIdentity (IIdentity a) = a
+-- runIIdentity :: IIdentity p q a -> a
+-- runIIdentity (IIdentity a) = a
+
+data instance ScopeT IVoid m p p' q' q x' x where
+
 
 data IIO a where
   RunIO :: IO a -> IIO a
 
-runIO :: MiniEff '[IIO] IIdentity IVoid p q a -> IO a
+runIO :: MiniEff '[IIO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (ImpureT cmd k) = runIO $ runIKleisliTupled k (runIIdentity cmd)
-runIO (ScopeT _ _) = error "Impossible"
+runIO (ImpureT _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
+runIO (ScopedT _ _) = error "Impossible"
 
-embedIO :: Member IIO effs => IO a -> MiniEff effs f g p p a
+embedIO :: Member IIO effs => IO a -> MiniEff effs f p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont
 
 -- ------------------------------------------------
@@ -237,9 +237,9 @@ type family RemoveLast xs where
 
 type a ≁ b = (a ≠ b) ~ True
 
-type Operation a = a -> a -> Type -> Type
+-- type Operation a = a -> a -> Type -> Type
 
-type Scope a = a -> a -> a -> a -> Type -> Type -> Type
+-- type Scope a = a -> a -> a -> a -> Type -> Type -> Type
 
 type Apply :: forall k a. k a -> a -> a
 type family Apply a b

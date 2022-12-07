@@ -72,18 +72,18 @@ data Array p q x where
 --    [[AccessLevel]] -> [[AccessLevel]] -> [[AccessLevel]] -> [[AccessLevel]] -> Type -> Type ->
 --   Type
 
-data Thread m p p' q' q x x' where
+data instance ScopeT Array m p p' q' q x x' where
   AFork ::
     (AcceptableList p1 q1 p2) =>
     m p2 q2 a ->
-    Thread m p1 p2 q2 q1 a (Future a)
+    ScopeT Array m p1 p2 q2 q1 a (Future a)
   -- TODO: sr1 ~ [] is required for the runner
-  AFinish :: m p q () -> Thread m p p q p () ()
+  AFinish :: m p q () -> ScopeT Array m p p q p () ()
 
 -- afork :: AcceptableList p r p' => MiniEff f Thread p' q' x -> MiniEff f Thread p r (Future x)
-afork s = ScopeT (AFork s) emptyCont
+afork s = ScopedT (AFork s) emptyCont
 
-afinish s = ScopeT (AFinish s) emptyCont
+afinish s = ScopedT (AFinish s) emptyCont
 
 join i1 i2 = Impure (OHere $ Join i1 i2) emptyCont
 
@@ -120,7 +120,7 @@ unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n ->
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 runArrays ::
-  MiniEff '[IIO] Array Thread p q a ->
+  MiniEff '[IIO] Array p q a ->
   IO ()
 runArrays prog = P.do
   _ <- runIO $ runArraysH prog
@@ -128,8 +128,8 @@ runArrays prog = P.do
 
 runArraysH ::
   Member IIO effs =>
-  MiniEff effs Array Thread p q a ->
-  MiniEff effs IIdentity IVoid () () [TMVar ()]
+  MiniEff effs Array p q a ->
+  MiniEff effs IVoid () () [TMVar ()]
 runArraysH (Value _a) = I.return []
 runArraysH (ImpureT (Malloc i (a :: b)) c) =
   let upper = i - 1
@@ -173,7 +173,7 @@ runArraysH (ImpureT ((Split n i)) c) =
 runArraysH (ImpureT ((InjectIO a)) c) = I.do
   v <- embedIO a
   runArraysH $ runIKleisliTupled c v
-runArraysH (ScopeT (AFork c) a) = I.do
+runArraysH (ScopedT (AFork c) a) = I.do
   var <- embedIO newEmptyTMVarIO
 
   runArraysH c
@@ -182,6 +182,6 @@ runArraysH (ScopeT (AFork c) a) = I.do
         I.>> embedIO (atomically (putTMVar var () {-)-}))
         I.>> runArraysH (runIKleisliTupled a Future)
         I.>>= (\result -> I.return (var : result))
-runArraysH (ScopeT (AFinish c) a) =
+runArraysH (ScopedT (AFinish c) a) =
   runArraysH c I.>>= (embedIO . atomically . mapM_ takeTMVar) I.>> runArraysH (runIKleisliTupled a ())
 runArraysH _ = undefined

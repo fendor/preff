@@ -37,7 +37,7 @@ common exts
 library
   import:           warnings, exts
   exposed-modules:
-    Arrays
+    -- Arrays
     Parameterised.Array
     Parameterised.Protocol
     Parameterised.State
@@ -46,7 +46,7 @@ library
     Simple.State
     Simple.Reader
     Singletons
-    Store
+    -- Store
     Utils
 
   build-depends:

@@ -28,33 +28,24 @@ data Protocol p q r where
   Send :: a -> Protocol (S a : p) p ()
   Recv :: Protocol (R a : p) p a
 
-type ProtocolG ::
-  forall k.
-  ([k] -> [k] -> Type -> Type) ->
-  [k] ->
-  [k] ->
-  [k] ->
-  [k] ->
-  Type ->
-  Type ->
-  Type
-data ProtocolG m p p' q' q x x' where
+
+data instance ScopeT Protocol m p p' q' q x x' where
   LoopSUnbounded ::
     m a '[End] (Maybe x) ->
-    ProtocolG m (SLU a : c) a '[End] c (Maybe x) [x]
+    ScopeT Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
   LoopCUnbounded ::
     m a '[End] x ->
-    ProtocolG m (CLU a : c) a '[End] c x [x]
+    ScopeT Protocol m (CLU a : c) a '[End] c x [x]
   Sel1 ::
     m a '[End] x ->
-    ProtocolG m (C a b : c) a '[End] c x x
+    ScopeT Protocol m (C a b : c) a '[End] c x x
   Sel2 ::
     m b '[End] x ->
-    ProtocolG m (C a b : c) b '[End] c x x
+    ScopeT Protocol m (C a b : c) b '[End] c x x
   Offer ::
     m a '[End] x ->
     m b '[End] x ->
-    ProtocolG m (O a b : c) '[O a b] '[End] c x x
+    ScopeT Protocol m (O a b : c) '[O a b] '[End] c x x
 
 type family Dual proc where
   Dual (R a : p) = S a : Dual p
@@ -66,31 +57,31 @@ type family Dual proc where
   Dual '[End] = '[End]
 
 send ::
-  forall a effs g p.
+  forall a effs p.
   a ->
-  MiniEff effs Protocol g (S a : p) p ()
+  MiniEff effs Protocol (S a : p) p ()
 send a = sendS (Send a)
 
 -- recv :: MiniEff (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv ::
-  forall a p effs g.
-  MiniEff effs Protocol g (R a : p) p a
+  forall a p effs.
+  MiniEff effs Protocol (R a : p) p a
 recv = sendS Recv
 
 -- sel1 ::
 --     MiniEff effs f ProtocolG '[a] '[End] a ->
 --     MiniEff effs f ProtocolG (C a b : r) r a
 sel1 ::
-  MiniEff effs f ProtocolG p' '[End] a ->
-  MiniEff effs f ProtocolG (C p' b : r) r a
+  MiniEff effs Protocol p' '[End] a ->
+  MiniEff effs Protocol (C p' b : r) r a
 sel1 act = sendScoped (Sel1 act)
 
 -- sel2 ::
 --     MiniEff effs f ProtocolG b End a2 ->
 --     MiniEff effs f ProtocolG (C a b) r a2
 sel2 ::
-  MiniEff effs f ProtocolG p' '[End] a1 ->
-  MiniEff effs f ProtocolG (C a2 p' : r) r a1
+  MiniEff effs Protocol p' '[End] a1 ->
+  MiniEff effs Protocol (C a2 p' : r) r a1
 sel2 act = sendScoped (Sel2 act)
 
 -- offer ::
@@ -98,34 +89,34 @@ sel2 act = sendScoped (Sel2 act)
 --     MiniEff effs f ProtocolG b End a2 ->
 --     MiniEff effs f ProtocolG (O a b : c) c a2
 offer ::
-  MiniEff effs f ProtocolG a1 '[End] a2 ->
-  MiniEff effs f ProtocolG b '[End] a2 ->
-  MiniEff effs f ProtocolG (O a1 b : r) r a2
+  MiniEff effs Protocol a1 '[End] a2 ->
+  MiniEff effs Protocol b '[End] a2 ->
+  MiniEff effs Protocol (O a1 b : r) r a2
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
-  MiniEff effs f ProtocolG a '[End] (Maybe x) ->
-  MiniEff effs f ProtocolG (SLU a: r) r [x]
+  MiniEff effs Protocol a '[End] (Maybe x) ->
+  MiniEff effs Protocol (SLU a: r) r [x]
 loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
-  MiniEff effs f ProtocolG a '[End] x ->
-  MiniEff effs f ProtocolG (CLU a: r) r [x]
+  MiniEff effs Protocol a '[End] x ->
+  MiniEff effs Protocol (CLU a: r) r [x]
 loopC act = sendScoped (LoopCUnbounded act)
 
-simpleServer :: MiniEff effs Protocol g (S Int : R String : k) k String
+simpleServer :: MiniEff effs Protocol (S Int : R String : k) k String
 simpleServer = Ix.do
   send @Int 5
   s <- recv @String
   Ix.return s
 
-simpleClient :: MiniEff effs Protocol g (R Int : S String : k) k ()
+simpleClient :: MiniEff effs Protocol (R Int : S String : k) k ()
 simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
 
-serverLoop :: Member (StateS Int) effs => MiniEff effs Protocol ProtocolG (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (StateS Int) effs => MiniEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- getS
@@ -138,7 +129,7 @@ serverLoop = Ix.do
       else
         Ix.return $ Just n
 
-clientLoop :: MiniEff effs Protocol ProtocolG (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: MiniEff effs Protocol (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -149,7 +140,6 @@ choice ::
   MiniEff
     effs
     Protocol
-    ProtocolG
     (S Int : C '[R Int, End] b : k2)
     k2
     Int
@@ -163,7 +153,6 @@ andOffer ::
   MiniEff
     effs
     Protocol
-    ProtocolG
     (R Int : O '[S Int, End] '[S Int, End] : k)
     k
     ()
@@ -182,7 +171,6 @@ choice2 ::
   MiniEff
     effs
     Protocol
-    ProtocolG
     (R Int : C '[R String, End] '[S String, R String, End] : k)
     k
     String
@@ -204,25 +192,25 @@ choice2 = Ix.do
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  MiniEff '[] Protocol ProtocolG p1 '[End] a ->
-  MiniEff '[] Protocol ProtocolG p2 '[End] b ->
-  MiniEff '[] IIdentity IVoid () () (a, b)
+  MiniEff '[] Protocol p1 '[End] a ->
+  MiniEff '[] Protocol p2 '[End] b ->
+  MiniEff '[] IVoid () () (a, b)
 connect (Value x) (Value y) = Ix.return (x, y)
 connect (ImpureT (Recv) k1) (ImpureT ((Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect (ImpureT ((Send a)) k1) (ImpureT (Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
-connect (ScopeT (Sel1 act1) k1) (ScopeT (Offer act2 _) k2) = Ix.do
+connect (ScopedT (Sel1 act1) k1) (ScopedT (Offer act2 _) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect (ScopeT (Sel2 act1) k1) (ScopeT (Offer _ act2) k2) = Ix.do
+connect (ScopedT (Sel2 act1) k1) (ScopedT (Offer _ act2) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect (ScopeT (Offer act1 _) k1) (ScopeT (Sel1 act2) k2) = Ix.do
+connect (ScopedT (Offer act1 _) k1) (ScopedT (Sel1 act2) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect (ScopeT (Offer _ act1) k1) (ScopeT (Sel2 act2) k2) = Ix.do
+connect (ScopedT (Offer _ act1) k1) (ScopedT (Sel2 act2) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect (ScopeT (LoopSUnbounded act1) k1) (ScopeT (LoopCUnbounded act2) k2) = Ix.do
+connect (ScopedT (LoopSUnbounded act1) k1) (ScopedT (LoopCUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
   where
@@ -238,25 +226,25 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  MiniEff effs Protocol ProtocolG p1 '[End] a ->
-  MiniEff effs Protocol ProtocolG p2 '[End] b ->
-  MiniEff effs IIdentity IVoid () () (a, b)
+  MiniEff effs Protocol p1 '[End] a ->
+  MiniEff effs Protocol p2 '[End] b ->
+  MiniEff effs IVoid () () (a, b)
 connect' (Value x) (Value y) = Ix.return (x, y)
 connect' (ImpureT (Recv) k1) (ImpureT ((Send a)) k2) = connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect' (ImpureT ((Send a)) k1) (ImpureT (Recv) k2) = connect' (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
-connect' (ScopeT (Sel1 act1) k1) (ScopeT (Offer act2 _) k2) = Ix.do
+connect' (ScopedT (Sel1 act1) k1) (ScopedT (Offer act2 _) k2) = Ix.do
   (a, b) <- connect' act1 act2
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect' (ScopeT (Sel2 act1) k1) (ScopeT (Offer _ act2) k2) = Ix.do
+connect' (ScopedT (Sel2 act1) k1) (ScopedT (Offer _ act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect' (ScopeT (Offer act1 _) k1) (ScopeT (Sel1 act2) k2) = Ix.do
+connect' (ScopedT (Offer act1 _) k1) (ScopedT (Sel1 act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect' (ScopeT (Offer _ act1) k1) (ScopeT (Sel2 act2) k2) = Ix.do
+connect' (ScopedT (Offer _ act1) k1) (ScopedT (Sel2 act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
-connect' (ScopeT (LoopSUnbounded act1) k1) (ScopeT (LoopCUnbounded act2) k2) = Ix.do
+connect' (ScopedT (LoopSUnbounded act1) k1) (ScopedT (LoopCUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
   where
@@ -265,7 +253,7 @@ connect' (ScopeT (LoopSUnbounded act1) k1) (ScopeT (LoopCUnbounded act2) k2) = I
       case a of
         Nothing -> Ix.return (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
-connect' (ScopeT (LoopCUnbounded act1) k1) (ScopeT (LoopSUnbounded act2) k2) = Ix.do
+connect' (ScopedT (LoopCUnbounded act1) k1) (ScopedT (LoopSUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
   where

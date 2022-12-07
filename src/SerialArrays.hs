@@ -19,7 +19,7 @@ import Utils
 import qualified Utils as I
 import Prelude hiding (Monad (..), length, read)
 
-afork a = ScopeT (AFork a) emptyCont
+afork a = ScopedT (AFork a) emptyCont
 
 join i1 i2 = ImpureT (Join i1 i2) $ IKleisliTupled return
 
@@ -35,10 +35,10 @@ read a b = ImpureT (Read a b) $ IKleisliTupled return
 
 runSerialArrays ::
   (Member IIO effs) =>
-  MiniEff effs Array IVoid p q a ->
-  MiniEff effs IIdentity IVoid () () a
+  MiniEff effs Array p q a ->
+  MiniEff effs IVoid () () a
 runSerialArrays (Value a) = return a
-runSerialArrays (ScopeT _ _) = error "Test"
+runSerialArrays (ScopedT _ _) = error "Test"
 runSerialArrays (Impure cmd k) =
   -- unsafeCoerce is currently necessary because GHC fails to unify:
   --
@@ -95,7 +95,7 @@ serialConvolve ::
   Int ->
   AToken Int v n ->
   [Int] ->
-  MiniEff eff Array IVoid k2 k2 ()
+  MiniEff eff Array k2 k2 ()
 serialConvolve before after inputs weights = I.do
   len <- length inputs
   _ <- foldM [0 .. (len - 1)] before $ \i prevEl -> I.do

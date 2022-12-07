@@ -13,30 +13,30 @@ data StateS s x where
 
 getS ::
   (Member (StateS s) effs) =>
-  MiniEff effs f g ps ps s
+  MiniEff effs f ps ps s
 getS = send GetS
 
 putS ::
   ( Member (StateS s) effs
   ) =>
   s ->
-  MiniEff effs f g ps ps ()
+  MiniEff effs f ps ps ()
 putS s = send $ PutS s
 
 runState ::
   s ->
-  MiniEff (StateS s : effs) IIdentity IVoid ps qs a ->
-  MiniEff effs IIdentity IVoid ps qs (s, a)
+  MiniEff (StateS s : effs) IVoid ps qs a ->
+  MiniEff effs IVoid ps qs (s, a)
 runState s (Value a) = I.return (s, a)
 runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
 runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
 runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
 runState e (ImpureT cmd k) = ImpureT cmd (IKleisliTupled $ runState e . runIKleisliTupled k)
-runState _ (ScopeT _ _) = error "Impossible, Scope node must never be created"
+runState _ (ScopedT _ _) = error "Impossible, Scope node must never be created"
 
 stateExample ::
   (Member (StateS Int) effs) =>
-  MiniEff effs f g ps ps String
+  MiniEff effs f ps ps String
 stateExample = I.do
   i <- getS @Int
   putS (i + i)
@@ -56,7 +56,7 @@ stateExample = I.do
 
 ambiguityExample ::
   (Member (StateS Int) effs) =>
-  MiniEff effs f g ps ps Int
+  MiniEff effs f ps ps Int
 ambiguityExample = I.do
   i <- getS
   i2 <- getS
@@ -67,7 +67,7 @@ moreExamples ::
   ( Member (StateS Int) effs
   , Member (StateS String) effs
   ) =>
-  MiniEff effs f g ps ps Int
+  MiniEff effs f ps ps Int
 moreExamples = I.do
   i <- getS -- :: forall js . MiniEff effs g ps js Int
   i2 <- getS -- :: forall js . MiniEff effs g js qs Int
