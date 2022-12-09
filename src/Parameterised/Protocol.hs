@@ -60,13 +60,13 @@ send ::
   forall a effs p.
   a ->
   MiniEff effs Protocol (S a : p) p ()
-send a = sendS (Send a)
+send a = sendP (Send a)
 
 -- recv :: MiniEff (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv ::
   forall a p effs.
   MiniEff effs Protocol (R a : p) p a
-recv = sendS Recv
+recv = sendP Recv
 
 -- sel1 ::
 --     MiniEff effs f ProtocolG '[a] '[End] a ->

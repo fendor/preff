@@ -141,8 +141,8 @@ run (ScopedT _ _) = error "Impossible"
 send :: Member f eff => f a -> MiniEff eff s p p a
 send f = Impure (inj f) emptyCont
 
-sendS :: s p q a -> MiniEff eff s p q a
-sendS f = ImpureT f emptyCont
+sendP :: s p q a -> MiniEff eff s p q a
+sendP f = ImpureT f emptyCont
 
 sendScoped :: ScopeT s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
 sendScoped g = ScopedT g emptyCont
@@ -150,6 +150,16 @@ sendScoped g = ScopedT g emptyCont
 class ScopedEffect f where
   hmap :: (forall x . m x -> n x) ->  m a -> f n a
 
+
+fold :: (forall x. Op f x -> x) -> (a -> b) -> MiniEff f IVoid p q a -> b
+fold alg gen (Value a) = gen a
+fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
+fold alg gen _ = undefined
+
+fold2 :: (forall x. f x -> x) -> (a -> b) -> MiniEff (f:eff) IVoid p q a -> b
+fold2 alg gen (Value a) = gen a
+fold2 alg gen (Impure (OHere op) k) = fold2 alg gen (runIKleisliTupled k (alg op))
+fold2 alg gen _ = undefined
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners

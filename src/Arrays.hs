@@ -18,7 +18,7 @@ dot :: [Int] -> [Int] -> Int
 dot [a, b, c] [x, y, z] = a * x + b * y + c * z
 dot _ _ = error "dot"
 
-partition :: (Ord t, 'R ≤ Lookup c n, 'X ≤ Lookup c n) => Int -> AToken t v n -> MiniEff Array Thread c c Int
+partition :: (Ord t, 'R ≤ Lookup c n, 'X ≤ Lookup c n) => Int -> AToken t v n -> MiniEff effs Array Thread c c Int
 partition len arr = do
   let lastIndex = len - 1 -- c
   pivot <- read arr lastIndex
@@ -110,7 +110,7 @@ example21 = runArrays $ do
 quicksort ::
   (X ≤ Lookup p n) =>
   AToken Int r n ->
-  MiniEff Array Thread p p ()
+  MiniEff effs Array Thread p p ()
 quicksort arr = do
   len <- length arr
   if len <= 2
@@ -135,13 +135,14 @@ serialConvolve ::
     (k2 :: [AccessLevel])
     (n :: Nat)
     (v :: k1)
-    (g :: [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> * -> * -> *).
+    (g :: [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> * -> * -> *)
+    effs.
   ( 'R ≤ Lookup k2 n, 'X ≤ Lookup k2 n) =>
   Int ->
   Int ->
   AToken Int v n ->
   [Int] ->
-  MiniEff Array g k2 k2 ()
+  MiniEff effs Array g k2 k2 ()
 serialConvolve before after inputs weights = do
   len <- length inputs
   _ <- foldM [0 .. (len - 1)] before $ \i prevEl -> do
@@ -162,7 +163,7 @@ parallelConvolve ::
   Int ->
   AToken Int r n ->
   [Int] ->
-  MiniEff Array Thread p p ()
+  MiniEff effs Array Thread p p ()
 parallelConvolve before after inputs weights = do
   len <- length inputs
   if len < 10
@@ -189,7 +190,7 @@ fft ::
   AToken (Complex Double) r1 n1 ->
   AToken (Complex Double) r2 n2 ->
   (Int, Int, Int) ->
-  MiniEff Array Thread p p ()
+  MiniEff effs Array Thread p p ()
 fft input output (start, gap, len) = do
   if len == 1
     then do
