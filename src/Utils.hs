@@ -139,6 +139,7 @@ data family ScopeT f
 
 type ScopedT f m p p' q' q x x' = ScopeT f m p p' q' q x x'
 
+-- TODO: this is trash
 type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect f where
   mapS :: Functor c =>

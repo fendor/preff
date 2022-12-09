@@ -28,21 +28,6 @@ data Protocol p q r where
   Send :: a -> Protocol (S a : p) p ()
   Recv :: Protocol (R a : p) p a
 
-instance ScopedEffect Protocol where
-  -- mapS ctx transform (LoopSUnbounded m) =
-  --   let y = transform (m <$ ctx)
-  --   in LoopSUnbounded y
-  mapS (ctx :: c ()) transform (LoopCUnbounded m) = let
-    y = transform (m <$ ctx)
-    z :: ScopeT Protocol n (CLU p' : r) p' '[End] r (c x) (c [x])
-    z = LoopCUnbounded (transform (m <$ ctx))
-
-    in LoopCUnbounded (transform (m <$ ctx))
-  mapS ctx transform (Sel1 m) = Sel1 (transform $ m <$ ctx)
-  mapS ctx transform (Sel2 m) = Sel2 (transform $ m <$ ctx)
-  mapS ctx transform (Offer m1 m2) = Offer (transform $ m1 <$ ctx) (transform $ m2 <$ ctx)
-  mapS _ _ _ = undefined
-
 data instance ScopeT Protocol m p p' q' q x x' where
   LoopSUnbounded ::
     m a '[End] (Maybe x) ->
