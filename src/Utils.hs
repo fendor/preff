@@ -7,6 +7,7 @@ import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Applicative (..), Monad (..))
 import qualified Prelude as P
+import Data.Void
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -61,14 +62,11 @@ data MiniEff effs f p q a where
     -- (x' -> MiniEff f g q r a) ->
     MiniEff effs f p r a
   ScopedT ::
-    ScopeT f (MiniEff effs f) p p' q' q x x' ->
+    ScopedT f (MiniEff effs f) p p' q' q x x' ->
     -- MiniEff f g p' q' x ->
     IKleisliTupled (MiniEff effs f) '(q, x') '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
     MiniEff effs f p r a
-
-type ScopeT :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
-data family ScopeT f -- :: forall k . (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
 
 instance Functor (MiniEff effs f p q) where
   fmap f (Value a) = Value $ f a
@@ -132,11 +130,33 @@ transformKleisli ::
   IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
-run :: MiniEff '[] IVoid p q a -> a
-run (Value a) = a
-run (Impure _cmd _k) = error "Impossible"
-run (ImpureT _cmd _k) = error "Impssouble" -- run $ runIKleisliTupled k (runIIdentity cmd)
-run (ScopedT _ _) = error "Impossible"
+-- ------------------------------------------------
+-- Scoped Algebras
+-- ------------------------------------------------
+
+type ScopeT :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
+data family ScopeT f
+
+type ScopedT f m p p' q' q x x' = ScopeT f m p p' q' q x x'
+
+type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
+class ScopedEffect f where
+  mapS :: Functor c =>
+    c () ->
+    (forall r u v . c (m u v r) -> n u v (c r)) ->
+    ScopeT f m p p' q' q x x' ->
+    ScopeT f n p p' q' q (c x) (c x')
+
+weave :: (ScopedEffect f, Functor c) =>
+  c () ->
+  (forall r u v. c (m u v r) -> n u v (c r)) ->
+  ScopedT f m p p' q' q x x' ->
+  ScopedT f n p p' q' q (c x) (c x')
+weave = mapS
+
+-- ------------------------------------------------
+-- Utility functions
+-- ------------------------------------------------
 
 send :: Member f eff => f a -> MiniEff eff s p p a
 send f = Impure (inj f) emptyCont
@@ -147,33 +167,56 @@ sendP f = ImpureT f emptyCont
 sendScoped :: ScopeT s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
 sendScoped g = ScopedT g emptyCont
 
-class ScopedEffect f where
-  hmap :: (forall x . m x -> n x) ->  m a -> f n a
-
+-- ------------------------------------------------
+-- Algebraic Handlers
+-- ------------------------------------------------
 
 fold :: (forall x. Op f x -> x) -> (a -> b) -> MiniEff f IVoid p q a -> b
 fold alg gen (Value a) = gen a
 fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
 fold alg gen _ = undefined
 
-fold2 :: (forall x. f x -> x) -> (a -> b) -> MiniEff (f:eff) IVoid p q a -> b
-fold2 alg gen (Value a) = gen a
-fold2 alg gen (Impure (OHere op) k) = fold2 alg gen (runIKleisliTupled k (alg op))
-fold2 alg gen _ = undefined
+foldP :: (forall x u v. s u v x -> x) -> (forall x. Op f x -> x) -> (a -> b) -> MiniEff f s p q a -> b
+foldP algP alg gen (Value a) = gen a
+foldP algP alg gen (Impure op k) = foldP algP alg gen (runIKleisliTupled k (alg op))
+foldP algP alg gen (ImpureT op k) = foldP algP alg gen (runIKleisliTupled k (algP op))
+foldP algP alg gen (ScopedT op k) = undefined
+
+handle :: Alg f -> Gen a b -> MiniEff (f:eff) IVoid p q a -> MiniEff eff IVoid p q b
+handle alg gen (Value a) = return $ gen a
+handle alg gen (Impure (OHere op) k) = handle alg gen (runIKleisliTupled k (alg op))
+handle alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
+handle alg gen (ImpureT op k) = ImpureT op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
+handle alg gen (ScopedT op k) = error "Impossible"
+
+-- fuse :: Alg f -> Alg g -> Alg (f :+: g)
+
+type Alg f = forall x . f x -> x
+type AlgP f = forall x p q . f p q x -> x
+type Gen a b = a -> b
+type GenP a b = a -> b
 
 -- ------------------------------------------------
--- Sem Monad and Simple Runners
+-- MiniEff Monad and Simple Runners
 -- ------------------------------------------------
+
+run :: MiniEff '[] IVoid p q a -> a
+run = foldP algIVoid (\_ -> undefined) (\x -> x)
 
 -- data IIdentity p q a where
 --  IIdentity :: a -> IIdentity p q a
 data IVoid p q a where
 
+algIVoid :: AlgP IVoid
+algIVoid _ = error "Never invoked"
+
+genIVoid :: GenP a a
+genIVoid x = x
+
 -- runIIdentity :: IIdentity p q a -> a
 -- runIIdentity (IIdentity a) = a
 
 data instance ScopeT IVoid m p p' q' q x' x where
-
 
 data IIO a where
   RunIO :: IO a -> IIO a

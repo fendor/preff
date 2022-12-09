@@ -78,6 +78,10 @@ data instance ScopeT StateP m p p' q' q x x' where
     m p' q' x ->
     ScopeT StateP m p p' q' p x x
 
+instance ScopedEffect StateP where
+  mapS ctx transform (LocalAG f op) =
+    LocalAG f (transform $ op <$ ctx)
+
 runStateAIG ::
   p ->
   MiniEff eff StateP p q a ->
@@ -92,25 +96,3 @@ runStateAIG p (ScopedT (LocalAG f m) k) = Ix.do
   (x, _q) <- runStateAIG (f p) m
   runStateAIG p (runIKleisliTupled k x)
 
-runStateAI ::
-  p ->
-  MiniEff eff StateP p q a ->
-  MiniEff eff IVoid () () (a, q)
-runStateAI p (Value x) = Ix.return (x, p)
-runStateAI p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAI p $ runIKleisliTupled k x
-runStateAI p (ImpureT GetP k) =
-  runStateAI p (runIKleisliTupled k p)
-runStateAI _ (ImpureT (PutP q) k) =
-  runStateAI q (runIKleisliTupled k ())
-runStateAI _p (ScopedT _ _) = error "GHC is not exhaustive"
-
-genericState ::
-  MiniEff effs f p q ()
-genericState = undefined
-
--- putA ::
---   ( Member StateA () q effs ps qs
---   ) =>
---   q ->
---   MiniEff effs g ps qs ()
--- putA q = Impure (inj (PutA q) :: Op effs ps qs ()) emptyCont

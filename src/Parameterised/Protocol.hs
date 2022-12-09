@@ -28,6 +28,20 @@ data Protocol p q r where
   Send :: a -> Protocol (S a : p) p ()
   Recv :: Protocol (R a : p) p a
 
+instance ScopedEffect Protocol where
+  -- mapS ctx transform (LoopSUnbounded m) =
+  --   let y = transform (m <$ ctx)
+  --   in LoopSUnbounded y
+  mapS (ctx :: c ()) transform (LoopCUnbounded m) = let
+    y = transform (m <$ ctx)
+    z :: ScopeT Protocol n (CLU p' : r) p' '[End] r (c x) (c [x])
+    z = LoopCUnbounded (transform (m <$ ctx))
+
+    in LoopCUnbounded (transform (m <$ ctx))
+  mapS ctx transform (Sel1 m) = Sel1 (transform $ m <$ ctx)
+  mapS ctx transform (Sel2 m) = Sel2 (transform $ m <$ ctx)
+  mapS ctx transform (Offer m1 m2) = Offer (transform $ m1 <$ ctx) (transform $ m2 <$ ctx)
+  mapS _ _ _ = undefined
 
 data instance ScopeT Protocol m p p' q' q x x' where
   LoopSUnbounded ::
@@ -35,7 +49,7 @@ data instance ScopeT Protocol m p p' q' q x x' where
     ScopeT Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
   LoopCUnbounded ::
     m a '[End] x ->
-    ScopeT Protocol m (CLU a : c) a '[End] c x [x]
+    ScopeT Protocol m (CLU a : r) a '[End] r x [x]
   Sel1 ::
     m a '[End] x ->
     ScopeT Protocol m (C a b : c) a '[End] c x x
@@ -62,32 +76,21 @@ send ::
   MiniEff effs Protocol (S a : p) p ()
 send a = sendP (Send a)
 
--- recv :: MiniEff (Protocol :+: IIdentity) ProtocolG '(a :? p, sr) '(p, sr) a
 recv ::
   forall a p effs.
   MiniEff effs Protocol (R a : p) p a
 recv = sendP Recv
 
--- sel1 ::
---     MiniEff effs f ProtocolG '[a] '[End] a ->
---     MiniEff effs f ProtocolG (C a b : r) r a
 sel1 ::
   MiniEff effs Protocol p' '[End] a ->
   MiniEff effs Protocol (C p' b : r) r a
 sel1 act = sendScoped (Sel1 act)
 
--- sel2 ::
---     MiniEff effs f ProtocolG b End a2 ->
---     MiniEff effs f ProtocolG (C a b) r a2
 sel2 ::
   MiniEff effs Protocol p' '[End] a1 ->
   MiniEff effs Protocol (C a2 p' : r) r a1
 sel2 act = sendScoped (Sel2 act)
 
--- offer ::
---     MiniEff effs f ProtocolG a End a2 ->
---     MiniEff effs f ProtocolG b End a2 ->
---     MiniEff effs f ProtocolG (O a b : c) c a2
 offer ::
   MiniEff effs Protocol a1 '[End] a2 ->
   MiniEff effs Protocol b '[End] a2 ->
@@ -114,7 +117,6 @@ simpleClient :: MiniEff effs Protocol (R Int : S String : k) k ()
 simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
-
 
 serverLoop :: Member (StateS Int) effs => MiniEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
