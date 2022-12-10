@@ -36,9 +36,9 @@ alloc a = Impure (OHere $ Alloc a) emptyCont
 
 get a = Impure (OHere $ Get a) emptyCont
 
-fork s = ScopedT (Fork s) emptyCont
+fork s = ScopedP (Fork s) emptyCont
 
-finish s = ScopedT (Finish s) emptyCont
+finish s = ScopedP (Finish s) emptyCont
 
 data StateP p q a where
   PutP :: x -> StateP p x ()
@@ -47,11 +47,11 @@ data StateP p q a where
 putAI ::
   p ->
   MiniEff effs StateP q p ()
-putAI p = ImpureT (PutP p) emptyCont
+putAI p = ImpureP (PutP p) emptyCont
 
 getAI ::
   MiniEff effs StateP p p p
-getAI = ImpureT (GetP) emptyCont
+getAI = ImpureP (GetP) emptyCont
 
 stateChangeExp ::
   MiniEff effs StateP String Int String
@@ -70,7 +70,7 @@ localAG' ::
   (p -> p') ->
   MiniEff effs StateP p' q' a ->
   MiniEff effs StateP p p a
-localAG' f act = ScopedT (LocalAG f act) emptyCont
+localAG' f act = ScopedP (LocalAG f act) emptyCont
 
 data instance ScopeT StateP m p p' q' q x x' where
   LocalAG ::
@@ -88,11 +88,11 @@ runStateAIG ::
   MiniEff eff IVoid () () (a, q)
 runStateAIG p (Value x) = Ix.return (x, p)
 runStateAIG p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
-runStateAIG p (ImpureT GetP k) =
+runStateAIG p (ImpureP GetP k) =
   runStateAIG p (runIKleisliTupled k p)
-runStateAIG _ (ImpureT (PutP q) k) =
+runStateAIG _ (ImpureP (PutP q) k) =
   runStateAIG q (runIKleisliTupled k ())
-runStateAIG p (ScopedT (LocalAG f m) k) = Ix.do
+runStateAIG p (ScopedP (LocalAG f m) k) = Ix.do
   (x, _q) <- runStateAIG (f p) m
   runStateAIG p (runIKleisliTupled k x)
 

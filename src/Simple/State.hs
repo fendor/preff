@@ -37,9 +37,9 @@ runStateP :: s ->
 runStateP s = \case
   (Value a) -> I.return (s, a)
   (Impure op k) -> Impure op $ IKleisliTupled $ \x -> runStateP s (runIKleisliTupled k x)
-  (ImpureT (PutP s') k) -> runStateP s' $ runIKleisliTupled k ()
-  (ImpureT GetP k) -> runStateP s $ runIKleisliTupled k s
-  (ScopedT (ModifyP f act) k) -> I.do
+  (ImpureP (PutP s') k) -> runStateP s' $ runIKleisliTupled k ()
+  (ImpureP GetP k) -> runStateP s $ runIKleisliTupled k s
+  (ScopedP (ModifyP f act) k) -> I.do
     (s', v) <- runStateP (f s) act
     runStateP s' $ runIKleisliTupled k v
 
@@ -63,9 +63,9 @@ runState s (Value a) = I.return (s, a)
 runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
 runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
 runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
-runState s (ImpureT cmd k) = ImpureT cmd (IKleisliTupled $ runState s . runIKleisliTupled k)
-runState s (ScopedT op k) =
-  ScopedT
+runState s (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runState s . runIKleisliTupled k)
+runState s (ScopedP op k) =
+  ScopedP
     (weave (s, ()) (uncurry runState) op)
     (IKleisliTupled $ \(s', a) -> runState s' $ runIKleisliTupled k a)
 

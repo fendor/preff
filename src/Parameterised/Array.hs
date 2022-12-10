@@ -81,9 +81,9 @@ data instance ScopeT Array m p p' q' q x x' where
   AFinish :: m p q () -> ScopeT Array m p p q p () ()
 
 -- afork :: AcceptableList p r p' => MiniEff f Thread p' q' x -> MiniEff f Thread p r (Future x)
-afork s = ScopedT (AFork s) emptyCont
+afork s = ScopedP (AFork s) emptyCont
 
-afinish s = ScopedT (AFinish s) emptyCont
+afinish s = ScopedP (AFinish s) emptyCont
 
 join i1 i2 = Impure (OHere $ Join i1 i2) emptyCont
 
@@ -131,14 +131,14 @@ runArraysH ::
   MiniEff effs Array p q a ->
   MiniEff effs IVoid () () [TMVar ()]
 runArraysH (Value _a) = I.return []
-runArraysH (ImpureT (Malloc i (a :: b)) c) =
+runArraysH (ImpureP (Malloc i (a :: b)) c) =
   let upper = i - 1
    in let bounds = (0, upper)
        in I.do
             arr <- embedIO $ (IO.newArray bounds a :: IO (IO.IOArray Int b))
             let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
             runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
-runArraysH (ImpureT ((Read n i)) c) =
+runArraysH (ImpureP ((Read n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -146,7 +146,7 @@ runArraysH (ImpureT ((Read n i)) c) =
             else
               embedIO (IO.readArray (arr :: IO.IOArray Int Any) offset)
                 I.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
-runArraysH (ImpureT ((Write n i (a :: b))) c) =
+runArraysH (ImpureP ((Write n i (a :: b))) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -154,14 +154,14 @@ runArraysH (ImpureT ((Write n i (a :: b))) c) =
             else
               embedIO (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a)
                 I.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
-runArraysH (ImpureT ((Length n)) c) =
+runArraysH (ImpureP ((Length n)) c) =
   let ((lower, upper), _arr) = unsafeUncoverA n
    in if upper - lower + 1 < 0
         then error "Should not be here"
         else runArraysH (runIKleisliTupled c (upper - lower + 1))
-runArraysH (ImpureT ((Join _a _b)) c) =
+runArraysH (ImpureP ((Join _a _b)) c) =
   runArraysH (runIKleisliTupled c ())
-runArraysH (ImpureT ((Split n i)) c) =
+runArraysH (ImpureP ((Split n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
        in if offset > upper || offset < lower
@@ -170,10 +170,10 @@ runArraysH (ImpureT ((Split n i)) c) =
               let n1 = (lower, offset)
                in let n2 = (offset + 1, upper)
                    in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
-runArraysH (ImpureT ((InjectIO a)) c) = I.do
+runArraysH (ImpureP ((InjectIO a)) c) = I.do
   v <- embedIO a
   runArraysH $ runIKleisliTupled c v
-runArraysH (ScopedT (AFork c) a) = I.do
+runArraysH (ScopedP (AFork c) a) = I.do
   var <- embedIO newEmptyTMVarIO
 
   runArraysH c
@@ -182,6 +182,6 @@ runArraysH (ScopedT (AFork c) a) = I.do
         I.>> embedIO (atomically (putTMVar var () {-)-}))
         I.>> runArraysH (runIKleisliTupled a Future)
         I.>>= (\result -> I.return (var : result))
-runArraysH (ScopedT (AFinish c) a) =
+runArraysH (ScopedP (AFinish c) a) =
   runArraysH c I.>>= (embedIO . atomically . mapM_ takeTMVar) I.>> runArraysH (runIKleisliTupled a ())
 runArraysH _ = undefined

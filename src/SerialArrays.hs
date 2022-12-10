@@ -19,26 +19,26 @@ import Utils
 import qualified Utils as I
 import Prelude hiding (Monad (..), length, read)
 
-afork a = ScopedT (AFork a) emptyCont
+afork a = ScopedP (AFork a) emptyCont
 
-join i1 i2 = ImpureT (Join i1 i2) $ IKleisliTupled return
+join i1 i2 = ImpureP (Join i1 i2) $ IKleisliTupled return
 
-write a b c = ImpureT (Write a b c) $ IKleisliTupled return
+write a b c = ImpureP (Write a b c) $ IKleisliTupled return
 
-malloc a b = ImpureT (Malloc a b) $ IKleisliTupled return
+malloc a b = ImpureP (Malloc a b) $ IKleisliTupled return
 
-slice a b = ImpureT (Split a b) $ IKleisliTupled return
+slice a b = ImpureP (Split a b) $ IKleisliTupled return
 
-length a = ImpureT (Length a) $ IKleisliTupled return
+length a = ImpureP (Length a) $ IKleisliTupled return
 
-read a b = ImpureT (Read a b) $ IKleisliTupled return
+read a b = ImpureP (Read a b) $ IKleisliTupled return
 
 runSerialArrays ::
   (Member IIO effs) =>
   MiniEff effs Array p q a ->
   MiniEff effs IVoid () () a
 runSerialArrays (Value a) = return a
-runSerialArrays (ScopedT _ _) = error "Test"
+runSerialArrays (ScopedP _ _) = error "Test"
 runSerialArrays (Impure cmd k) =
   -- unsafeCoerce is currently necessary because GHC fails to unify:
   --
@@ -47,7 +47,7 @@ runSerialArrays (Impure cmd k) =
   --
   -- Maybe we can pass somehow that sr2 ~ (u: ps0)
   Impure cmd (IKleisliTupled $ \x -> runSerialArrays $ runIKleisliTupled k x)
-runSerialArrays (ImpureT cmd k) = case cmd of
+runSerialArrays (ImpureP cmd k) = case cmd of
   Malloc i (a :: b) -> I.do
     let bounds = (0, i - 1)
     arr <- embedIO (IO.newArray bounds a :: IO (IO.IOArray Int b))

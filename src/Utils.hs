@@ -55,14 +55,14 @@ data MiniEff effs f p q a where
     Op effs x ->
     IKleisliTupled (MiniEff effs f) '(p, x) '(r, a) ->
     MiniEff effs f p r a
-  ImpureT ::
+  ImpureP ::
     f p q x ->
     -- MiniEff f g p' q' x ->
     IKleisliTupled (MiniEff effs f) '(q, x) '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
     MiniEff effs f p r a
-  ScopedT ::
-    ScopedT f (MiniEff effs f) p p' q' q x x' ->
+  ScopedP ::
+    ScopedP f (MiniEff effs f) p p' q' q x x' ->
     -- MiniEff f g p' q' x ->
     IKleisliTupled (MiniEff effs f) '(q, x') '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
@@ -71,21 +71,21 @@ data MiniEff effs f p q a where
 instance Functor (MiniEff effs f p q) where
   fmap f (Value a) = Value $ f a
   fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (ImpureT op k) = ImpureT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (ScopedT op k) = ScopedT op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (ImpureP op k) = ImpureP op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (ScopedP op k) = ScopedP op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
 instance IFunctor (MiniEff effs f) where
   imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ImpureT op k) = ImpureT op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ScopedT op k) = ScopedT op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (ImpureP op k) = ImpureP op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (ScopedP op k) = ScopedP op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
 instance IApplicative (MiniEff effs f) where
   pure = Value
   (Value f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  (ImpureT fop k') <*> k = ImpureT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  ScopedT fop k' <*> k = ScopedT fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (ImpureP fop k') <*> k = ImpureP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  ScopedP fop k' <*> k = ScopedP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
 instance IMonad (MiniEff effs f) where
   return :: a -> MiniEff effs f i i a
@@ -94,8 +94,8 @@ instance IMonad (MiniEff effs f) where
   (>>=) :: MiniEff effs f i j a -> (a -> MiniEff effs f j k b) -> MiniEff effs f i k b
   (Value a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ImpureT o k) >>= f = ImpureT o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ScopedT g k) >>= f = ScopedT g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ImpureP o k) >>= f = ImpureP o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ScopedP g k) >>= f = ScopedP g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -137,7 +137,7 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 type ScopeT :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
 data family ScopeT f
 
-type ScopedT f m p p' q' q x x' = ScopeT f m p p' q' q x x'
+type ScopedP f m p p' q' q x x' = ScopeT f m p p' q' q x x'
 
 -- TODO: this is trash
 type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
@@ -151,8 +151,8 @@ class ScopedEffect f where
 weave :: (ScopedEffect f, Functor c) =>
   c () ->
   (forall r u v. c (m u v r) -> n u v (c r)) ->
-  ScopedT f m p p' q' q x x' ->
-  ScopedT f n p p' q' q (c x) (c x')
+  ScopedP f m p p' q' q x x' ->
+  ScopedP f n p p' q' q (c x) (c x')
 weave = mapS
 
 -- ------------------------------------------------
@@ -163,10 +163,10 @@ send :: Member f eff => f a -> MiniEff eff s p p a
 send f = Impure (inj f) emptyCont
 
 sendP :: s p q a -> MiniEff eff s p q a
-sendP f = ImpureT f emptyCont
+sendP f = ImpureP f emptyCont
 
 sendScoped :: ScopeT s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
-sendScoped g = ScopedT g emptyCont
+sendScoped g = ScopedP g emptyCont
 
 -- ------------------------------------------------
 -- Algebraic Handlers
@@ -177,18 +177,22 @@ fold alg gen (Value a) = gen a
 fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
 fold alg gen _ = undefined
 
-foldP :: (forall x u v. s u v x -> x) -> (forall x. Op f x -> x) -> (a -> b) -> MiniEff f s p q a -> b
+foldP ::
+  (forall x u v. s u v x -> x) ->
+  (forall x. Op f x -> x) ->
+  (a -> b) ->
+  MiniEff f s p q a -> b
 foldP algP alg gen (Value a) = gen a
 foldP algP alg gen (Impure op k) = foldP algP alg gen (runIKleisliTupled k (alg op))
-foldP algP alg gen (ImpureT op k) = foldP algP alg gen (runIKleisliTupled k (algP op))
-foldP algP alg gen (ScopedT op k) = undefined
+foldP algP alg gen (ImpureP op k) = foldP algP alg gen (runIKleisliTupled k (algP op))
+foldP algP alg gen (ScopedP op k) = undefined
 
 handle :: Alg f -> Gen a b -> MiniEff (f:eff) IVoid p q a -> MiniEff eff IVoid p q b
 handle alg gen (Value a) = return $ gen a
 handle alg gen (Impure (OHere op) k) = handle alg gen (runIKleisliTupled k (alg op))
 handle alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
-handle alg gen (ImpureT op k) = ImpureT op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
-handle alg gen (ScopedT op k) = error "Impossible"
+handle alg gen (ImpureP op k) = ImpureP op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
+handle alg gen (ScopedP op k) = error "Impossible"
 
 -- fuse :: Alg f -> Alg g -> Alg (f :+: g)
 
@@ -226,8 +230,8 @@ runIO :: MiniEff '[IIO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (ImpureT _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
-runIO (ScopedT _ _) = error "Impossible"
+runIO (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
+runIO (ScopedP _ _) = error "Impossible"
 
 embedIO :: Member IIO effs => IO a -> MiniEff effs f p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont

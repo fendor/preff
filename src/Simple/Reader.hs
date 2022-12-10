@@ -20,9 +20,9 @@ runReader :: ScopedEffect s =>
 runReader _e (Value a) = I.return a
 runReader e (Impure (OHere Ask) k) = runReader e (runIKleisliTupled k e)
 runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
-runReader e (ImpureT cmd k) = ImpureT cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
-runReader e (ScopedT op k) =
-  ScopedT
+runReader e (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
+runReader e (ScopedP op k) =
+  ScopedP
     (weave (e,()) (fmap (e,) . uncurry runReader) op)
     (IKleisliTupled $ \(_, x) -> runReader e $ runIKleisliTupled k x)
 
@@ -30,10 +30,7 @@ runReader' ::
   e ->
   MiniEff (Reader e : effs) IVoid p q a ->
   MiniEff effs IVoid p q a
-runReader' e = handle (\case
-  Ask -> e
-  )
-  (\x -> x)
+runReader' e = handle (algReader e) genReader
 
 algReader :: e -> Alg (Reader e)
 algReader e = \case
