@@ -4,7 +4,6 @@
 module Parameterised.Array where
 
 import Control.Concurrent.STM
-import Control.Concurrent.STM.TMVar
 import Data.Array.IO as IO
 import GHC.Types (Any)
 import Parameterised.State (Future (..))
@@ -72,13 +71,13 @@ data Array p q x where
 --    [[AccessLevel]] -> [[AccessLevel]] -> [[AccessLevel]] -> [[AccessLevel]] -> Type -> Type ->
 --   Type
 
-data instance ScopeT Array m p p' q' q x x' where
+data instance ScopeE Array m p p' q' q x x' where
   AFork ::
     (AcceptableList p1 q1 p2) =>
     m p2 q2 a ->
-    ScopeT Array m p1 p2 q2 q1 a (Future a)
+    ScopeE Array m p1 p2 q2 q1 a (Future a)
   -- TODO: sr1 ~ [] is required for the runner
-  AFinish :: m p q () -> ScopeT Array m p p q p () ()
+  AFinish :: m p q () -> ScopeE Array m p p q p () ()
 
 -- afork :: AcceptableList p r p' => MiniEff f Thread p' q' x -> MiniEff f Thread p r (Future x)
 afork s = ScopedP (AFork s) emptyCont

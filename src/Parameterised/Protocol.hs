@@ -6,7 +6,6 @@ import Data.Kind
 import MiniEff hiding (send)
 import qualified Control.IxMonad as Ix
 import Simple.State
-import Unsafe.Coerce
 
 -- type End :: Type
 data End
@@ -29,23 +28,23 @@ data Protocol p q r where
   Send :: a -> Protocol (S a : p) p ()
   Recv :: Protocol (R a : p) p a
 
-data instance ScopeT Protocol m p p' q' q x x' where
+data instance ScopeE Protocol m p p' q' q x x' where
   LoopSUnbounded ::
     m a '[End] (Maybe x) ->
-    ScopeT Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
+    ScopeE Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
   LoopCUnbounded ::
     m a '[End] x ->
-    ScopeT Protocol m (CLU a : r) a '[End] r x [x]
+    ScopeE Protocol m (CLU a : r) a '[End] r x [x]
   Sel1 ::
     m a '[End] x ->
-    ScopeT Protocol m (C a b : c) a '[End] c x x
+    ScopeE Protocol m (C a b : c) a '[End] c x x
   Sel2 ::
     m b '[End] x ->
-    ScopeT Protocol m (C a b : c) b '[End] c x x
+    ScopeE Protocol m (C a b : c) b '[End] c x x
   Offer ::
     m a '[End] x ->
     m b '[End] x ->
-    ScopeT Protocol m (O a b : c) '[O a b] '[End] c x x
+    ScopeE Protocol m (O a b : c) '[O a b] '[End] c x x
 
 -- myweave :: Functor ctx =>
 --   ctx () ->

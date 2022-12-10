@@ -15,11 +15,11 @@ data StateP s p q x where
   PutP :: s -> StateP s () () ()
   GetP :: StateP s () () s
 
-data instance ScopeT (StateP s) m p p' q' q x x' where
+data instance ScopeE (StateP s) m p p' q' q x x' where
   ModifyP ::
     (s -> s) ->
     m () () x ->
-    ScopeT (StateP s) m () () () () x x
+    ScopeE (StateP s) m () () () () x x
 
 instance ScopedEffect (StateP s) where
   mapS ctx nt (ModifyP f act) =

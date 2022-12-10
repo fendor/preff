@@ -21,9 +21,9 @@ data StateF p q x where
     t ->
     StateF p p ()
 
-data instance ScopeT StateF m p p' q' q x x' where
-  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeT StateF m p1 p2 q2 q1 a (Future a)
-  Finish :: m p2 q2 a -> ScopeT StateF m p p q p a a
+data instance ScopeE StateF m p p' q' q x x' where
+  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeE StateF m p1 p2 q2 q1 a (Future a)
+  Finish :: m p2 q2 a -> ScopeE StateF m p p q p a a
 
 type Token :: Type -> MiniEff.Nat -> Type
 newtype Token t n = Token ()
@@ -72,11 +72,11 @@ modifyP' ::
   MiniEff effs StateP p p a
 modifyP' f act = ScopedP (ModifyP f act) emptyCont
 
-data instance ScopeT StateP m p p' q' q x x' where
+data instance ScopeE StateP m p p' q' q x x' where
   ModifyP ::
     (p -> p') ->
     m p' q' x ->
-    ScopeT StateP m p p' q' p x x
+    ScopeE StateP m p p' q' p x x
 
 instance ScopedEffect StateP where
   mapS ctx transform (ModifyP f op) =

@@ -63,7 +63,7 @@ data MiniEff effs f p q a where
     -- (x' -> MiniEff f g q r a) ->
     MiniEff effs f p r a
   ScopedP ::
-    ScopedP f (MiniEff effs f) p p' q' q x x' ->
+    ScopedE f (MiniEff effs f) p p' q' q x x' ->
     -- MiniEff f g p' q' x ->
     IKleisliTupled (MiniEff effs f) '(q, x') '(r, a) ->
     -- (x' -> MiniEff f g q r a) ->
@@ -135,10 +135,10 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 -- Scoped Algebras
 -- ------------------------------------------------
 
-type ScopeT :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
-data family ScopeT f
+type ScopeE :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
+data family ScopeE f
 
-type ScopedP f m p p' q' q x x' = ScopeT f m p p' q' q x x'
+type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
 
 -- TODO: this is trash
 type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
@@ -146,14 +146,14 @@ class ScopedEffect f where
   mapS :: Functor c =>
     c () ->
     (forall r u v . c (m u v r) -> n u v (c r)) ->
-    ScopeT f m p p' q' q x x' ->
-    ScopeT f n p p' q' q (c x) (c x')
+    ScopeE f m p p' q' q x x' ->
+    ScopeE f n p p' q' q (c x) (c x')
 
 weave :: (ScopedEffect f, Functor c) =>
   c () ->
   (forall r u v. c (m u v r) -> n u v (c r)) ->
-  ScopedP f m p p' q' q x x' ->
-  ScopedP f n p p' q' q (c x) (c x')
+  ScopedE f m p p' q' q x x' ->
+  ScopedE f n p p' q' q (c x) (c x')
 weave = mapS
 
 -- ------------------------------------------------
@@ -166,7 +166,7 @@ send f = Impure (inj f) emptyCont
 sendP :: s p q a -> MiniEff eff s p q a
 sendP f = ImpureP f emptyCont
 
-sendScoped :: ScopeT s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
+sendScoped :: ScopeE s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
 sendScoped g = ScopedP g emptyCont
 
 -- ------------------------------------------------
@@ -222,7 +222,7 @@ genIVoid x = x
 -- runIIdentity :: IIdentity p q a -> a
 -- runIIdentity (IIdentity a) = a
 
-data instance ScopeT IVoid m p p' q' q x' x where
+data instance ScopeE IVoid m p p' q' q x' x where
 
 data IIO a where
   RunIO :: IO a -> IIO a
