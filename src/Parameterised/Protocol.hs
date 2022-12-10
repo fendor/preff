@@ -6,6 +6,7 @@ import Data.Kind
 import Utils hiding (send)
 import qualified Utils as Ix
 import Simple.State
+import Unsafe.Coerce
 
 -- type End :: Type
 data End
@@ -45,6 +46,40 @@ data instance ScopeT Protocol m p p' q' q x x' where
     m a '[End] x ->
     m b '[End] x ->
     ScopeT Protocol m (O a b : c) '[O a b] '[End] c x x
+
+myweave :: Functor ctx =>
+  ctx () ->
+  -- natural transformation
+  (forall r u v. ctx (m u v r) -> n u v (ctx r)) ->
+  ScopedT Protocol m p p' q' q x x' ->
+  ScopedT Protocol n p p' q' q (ctx x) (ctx x')
+myweave ctx nt = \case
+  LoopCUnbounded m ->
+    let
+      n = nt (m <$ ctx)
+    in LoopCUnbounded n
+  LoopSUnbounded m ->
+    let
+      n = nt (m <$ ctx)
+    in do
+      unsafeCoerce LoopSUnbounded n
+  Sel1 m ->
+    let
+      n = nt (m <$ ctx)
+    in
+      Sel1 n
+  Sel2 m ->
+    let
+      n = nt (m <$ ctx)
+    in
+      Sel2 n
+
+  Offer m1 m2 ->
+    let
+      n1 = nt (m1 <$ ctx)
+      n2 = nt (m2 <$ ctx)
+    in
+      Offer n1 n2
 
 type family Dual proc where
   Dual (R a : p) = S a : Dual p
@@ -206,6 +241,7 @@ connect (ScopedT (LoopSUnbounded act1) k1) (ScopedT (LoopCUnbounded act2) k2) = 
       case a of
         Nothing -> Ix.return (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
+-- TODO: case missing for the other loop case
 
 
 connect _ _ = error "Procol.connect: internal tree error"
