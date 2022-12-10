@@ -3,8 +3,8 @@
 module Parameterised.Protocol where
 
 import Data.Kind
-import Utils hiding (send)
-import qualified Utils as Ix
+import MiniEff hiding (send)
+import qualified Control.IxMonad as Ix
 import Simple.State
 import Unsafe.Coerce
 

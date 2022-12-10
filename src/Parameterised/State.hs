@@ -5,8 +5,8 @@
 module Parameterised.State where
 
 import Data.Kind
-import Utils
-import qualified Utils as Ix
+import MiniEff
+import qualified Control.IxMonad as Ix
 import Prelude hiding (Monad (..))
 
 data StateF p q x where
@@ -25,7 +25,7 @@ data instance ScopeT StateF m p p' q' q x x' where
   Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeT StateF m p1 p2 q2 q1 a (Future a)
   Finish :: m p2 q2 a -> ScopeT StateF m p p q p a a
 
-type Token :: Type -> Ix.Nat -> Type
+type Token :: Type -> MiniEff.Nat -> Type
 newtype Token t n = Token ()
 
 data Future a = Future

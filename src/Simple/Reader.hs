@@ -1,7 +1,7 @@
 module Simple.Reader where
 
-import Utils
-import qualified Utils as I
+import MiniEff
+import qualified Control.IxMonad as Ix
 
 data Reader e a where
   Ask :: Reader e e
@@ -17,7 +17,7 @@ runReader :: ScopedEffect s =>
   e ->
   MiniEff (Reader e : effs) s p q a ->
   MiniEff effs s p q a
-runReader _e (Value a) = I.return a
+runReader _e (Value a) = Ix.return a
 runReader e (Impure (OHere Ask) k) = runReader e (runIKleisliTupled k e)
 runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
 runReader e (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)

@@ -11,7 +11,7 @@ module Arrays where
 import Data.Complex
 import Parameterised.Array
 import System.Random
-import Utils
+import MiniEff
 import Prelude hiding (Monad (..), length, read)
 
 dot :: [Int] -> [Int] -> Int

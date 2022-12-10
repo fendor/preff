@@ -1,13 +1,14 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils where
+module MiniEff where
 
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
 import Prelude hiding (Applicative (..), Monad (..))
 import qualified Prelude as P
 import Data.Void
+import Control.IxMonad as Ix
 
 -- ------------------------------------------------
 -- Main Effect monad
@@ -122,7 +123,7 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
 emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
-emptyCont = IKleisliTupled Utils.return
+emptyCont = IKleisliTupled Ix.return
 
 transformKleisli ::
   (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2)) ->
@@ -235,25 +236,6 @@ runIO (ScopedP _ _) = error "Impossible"
 
 embedIO :: Member IIO effs => IO a -> MiniEff effs f p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont
-
--- ------------------------------------------------
--- Parametric Effect monad
--- ------------------------------------------------
-
-type IMonad :: (p -> p -> Type -> Type) -> Constraint
-class IMonad m where
-  return :: a -> m i i a
-  (>>=) :: m i j a -> (a -> m j k b) -> m i k b
-  (>>) :: m i j a -> m j k b -> m i k b
-  g >> f = g >>= const f
-
-type IFunctor :: (p -> p -> Type -> Type) -> Constraint
-class IFunctor f where
-  imap :: (a -> b) -> f p q a -> f p q b
-
-class IFunctor f => IApplicative f where
-  pure :: a -> f i i a
-  (<*>) :: f i j (a -> b) -> f j r a -> f i r b
 
 -- ------------------------------------------------
 -- Effect System utilities

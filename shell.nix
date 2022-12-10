@@ -4,7 +4,7 @@ let
 in
 with nixpkgs;
 stdenv.mkDerivation {
-  name = "safe-mutations";
+  name = "minieff";
   buildInputs = [
     gmp
     zlib

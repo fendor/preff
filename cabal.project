@@ -1,4 +1,4 @@
-packages: ./ ./safe-mutation-plugin
+packages: ./
 
 package *
     ghc-options: -haddock

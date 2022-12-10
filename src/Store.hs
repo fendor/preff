@@ -6,7 +6,7 @@
 module Store where
 
 import Parameterised.State
-import Utils
+import MiniEff
 import Prelude hiding (Monad (..), (=<<))
 
 newtype Task = Task ()
