@@ -61,26 +61,26 @@ stateChangeExp = Ix.do
   -- putAI ("Test" :: String)
   putAI (5 :: Int)
   -- putAI (3 :: Int)
-  x <- localAG' (+ (1 :: Int)) $ getAI
+  x <- modifyP' (+ (1 :: Int)) $ getAI
   Ix.return $ s ++ show x
 
 runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
 
-localAG' ::
+modifyP' ::
   (p -> p') ->
   MiniEff effs StateP p' q' a ->
   MiniEff effs StateP p p a
-localAG' f act = ScopedP (LocalAG f act) emptyCont
+modifyP' f act = ScopedP (ModifyP f act) emptyCont
 
 data instance ScopeT StateP m p p' q' q x x' where
-  LocalAG ::
+  ModifyP ::
     (p -> p') ->
     m p' q' x ->
     ScopeT StateP m p p' q' p x x
 
 instance ScopedEffect StateP where
-  mapS ctx transform (LocalAG f op) =
-    LocalAG f (transform $ op <$ ctx)
+  mapS ctx transform (ModifyP f op) =
+    ModifyP f (transform $ op <$ ctx)
 
 runStateAIG ::
   p ->
@@ -92,7 +92,7 @@ runStateAIG p (ImpureP GetP k) =
   runStateAIG p (runIKleisliTupled k p)
 runStateAIG _ (ImpureP (PutP q) k) =
   runStateAIG q (runIKleisliTupled k ())
-runStateAIG p (ScopedP (LocalAG f m) k) = Ix.do
+runStateAIG p (ScopedP (ModifyP f m) k) = Ix.do
   (x, _q) <- runStateAIG (f p) m
   runStateAIG p (runIKleisliTupled k x)
 
