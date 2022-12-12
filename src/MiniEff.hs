@@ -122,6 +122,13 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
+-- | Apply a simple handler function to a continuation.
+hdl :: (IMonad m, IMonad n) =>
+  (m p1 q1 b -> n p2 q2 c) ->
+  IKleisliTupled m '(p1, a) '(q1, b) ->
+  IKleisliTupled n '(p2, a) '(q2, c)
+hdl f k = IKleisliTupled (f . runIKleisliTupled k)
+
 emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
 emptyCont = IKleisliTupled Ix.return
 
@@ -179,44 +186,52 @@ fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
 fold alg gen _ = undefined
 
 foldP ::
-  (forall x u v. s u v x -> x) ->
-  (forall x. Op f x -> x) ->
-  (a -> b) ->
+  AlgP s ->
+  AlgScoped s ->
+  Alg (Op f) ->
+  Gen a b ->
   MiniEff f s p q a -> b
-foldP algP alg gen (Value a) = gen a
-foldP algP alg gen (Impure op k) = foldP algP alg gen (runIKleisliTupled k (alg op))
-foldP algP alg gen (ImpureP op k) = foldP algP alg gen (runIKleisliTupled k (algP op))
-foldP algP alg gen (ScopedP op k) = undefined
+foldP algP algScoped alg gen (Value a) =
+  gen a
+foldP algP algScoped alg gen (Impure op k) =
+  foldP algP algScoped alg gen (runIKleisliTupled k (alg op))
+foldP algP algScoped alg gen (ImpureP op k) =
+  foldP algP algScoped alg gen (runIKleisliTupled k (algP op))
+foldP algP algScoped alg gen (ScopedP op k) =
+  foldP algP algScoped alg gen (runIKleisliTupled k (algScoped op))
 
 handle :: Alg f -> Gen a b -> MiniEff (f:eff) IVoid p q a -> MiniEff eff IVoid p q b
 handle alg gen (Value a) = return $ gen a
 handle alg gen (Impure (OHere op) k) = handle alg gen (runIKleisliTupled k (alg op))
 handle alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
-handle alg gen (ImpureP op k) = ImpureP op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
+handle alg gen (ImpureP op k) = error "Impossible"
 handle alg gen (ScopedP op k) = error "Impossible"
 
 -- fuse :: Alg f -> Alg g -> Alg (f :+: g)
 
 type Alg f = forall x . f x -> x
 type AlgP f = forall x p q . f p q x -> x
+type AlgScoped s = forall x m p p' q' q x' . ScopeE s m p p' q' q x' x -> x
 type Gen a b = a -> b
-type GenP a b = a -> b
 
 -- ------------------------------------------------
 -- MiniEff Monad and Simple Runners
 -- ------------------------------------------------
 
 run :: MiniEff '[] IVoid p q a -> a
-run = foldP algIVoid (\_ -> undefined) (\x -> x)
+run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
 -- data IIdentity p q a where
 --  IIdentity :: a -> IIdentity p q a
 data IVoid p q a where
 
 algIVoid :: AlgP IVoid
-algIVoid _ = error "Never invoked"
+algIVoid _ = error "Invalid"
 
-genIVoid :: GenP a a
+algScopedIVoid :: AlgScoped IVoid
+algScopedIVoid _ = error "Invalid"
+
+genIVoid :: Gen a a
 genIVoid x = x
 
 -- runIIdentity :: IIdentity p q a -> a

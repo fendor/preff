@@ -19,8 +19,8 @@ runReader :: ScopedEffect s =>
   MiniEff effs s p q a
 runReader _e (Value a) = Ix.return a
 runReader e (Impure (OHere Ask) k) = runReader e (runIKleisliTupled k e)
-runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
-runReader e (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
+runReader e (Impure (OThere cmd) k) = Impure cmd $ hdl (runReader e) k
+runReader e (ImpureP cmd k) = ImpureP cmd $ hdl (runReader e) k
 runReader e (ScopedP op k) =
   ScopedP
     (weave (e,()) (fmap (e,) . uncurry runReader) op)

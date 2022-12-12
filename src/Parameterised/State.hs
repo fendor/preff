@@ -87,7 +87,9 @@ runStateAIG ::
   MiniEff eff StateP p q a ->
   MiniEff eff IVoid () () (a, q)
 runStateAIG p (Value x) = Ix.return (x, p)
-runStateAIG p (Impure cmd k) = Impure cmd $ IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
+runStateAIG p (Impure cmd k) =
+  Impure cmd $
+    IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
 runStateAIG p (ImpureP GetP k) =
   runStateAIG p (runIKleisliTupled k p)
 runStateAIG _ (ImpureP (PutP q) k) =

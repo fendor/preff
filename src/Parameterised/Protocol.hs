@@ -50,8 +50,8 @@ data instance ScopeE Protocol m p p' q' q x x' where
 --   ctx () ->
 --   -- natural transformation
 --   (forall r u v. ctx (m u v r) -> n u v (ctx r)) ->
---   ScopedP Protocol m p p' q' q x x' ->
---   ScopedP Protocol n p p' q' q (ctx x) (ctx x')
+--   ScopedE Protocol m p p' q' q x x' ->
+--   ScopedE Protocol n p p' q' q (ctx x) (ctx x')
 -- myweave ctx nt = \case
 --   LoopCUnbounded m ->
 --     let
@@ -60,8 +60,7 @@ data instance ScopeE Protocol m p p' q' q x x' where
 --   LoopSUnbounded m ->
 --     let
 --       n = nt (m <$ ctx)
---     in do
---       unsafeCoerce LoopSUnbounded n
+--     in LoopSUnbounded n
 --   Sel1 m ->
 --     let
 --       n = nt (m <$ ctx)
@@ -80,14 +79,18 @@ data instance ScopeE Protocol m p p' q' q x x' where
 --     in
 --       Offer n1 n2
 
+type family Dual' proc
+type instance Dual' (R a) = S a
+type instance Dual' (S a) = R a
+type instance Dual' (O a b) = C (Dual a) (Dual b)
+type instance Dual' (C a b) = O (Dual a) (Dual b)
+type instance Dual' (CLU a) = SLU (Dual a)
+type instance Dual' (SLU a) = CLU (Dual a)
+type instance Dual' End = End
+
 type family Dual proc where
-  Dual (R a : p) = S a : Dual p
-  Dual (S a : p) = R a : Dual p
-  Dual (O a b : c) = C (Dual a) (Dual b) : Dual c
-  Dual (C a b : c) = O (Dual a) (Dual b) : Dual c
-  Dual (CLU a : c) = SLU (Dual a) : Dual c
-  Dual (SLU a : c) = CLU (Dual a) : Dual c
-  Dual '[End] = '[End]
+  Dual '[] = '[]
+  Dual (x: xs) = Dual' x : Dual xs
 
 send ::
   forall a effs p.
@@ -210,6 +213,9 @@ choice2 = Ix.do
           x <- recv @String
           Ix.return x
     )
+
+simpleLoopingClientServer :: Member (StateS Int) effs => MiniEff effs IVoid () () ([()], [Int])
+simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
