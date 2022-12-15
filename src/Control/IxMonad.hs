@@ -42,6 +42,14 @@ replicateM_ cnt0 f =
         | cnt <= 0  = pure ()
         | otherwise = f *> loop (cnt - 1)
 
+replicateM :: IApplicative f => Int -> f p p a -> f p p [a]
+replicateM cnt0 f =
+    loop cnt0
+  where
+    loop cnt
+        | cnt <= 0  = pure []
+        | otherwise = (imap (\x -> \xs -> (x:xs)) f) <*> loop (cnt - 1)
+
 forM_ :: (IMonad m) => [a] -> (a -> m i i ()) -> m i i ()
 forM_ [] _ = return ()
 forM_ [x] f =
