@@ -221,6 +221,10 @@ type Gen a b = a -> b
 run :: MiniEff '[] IVoid p q a -> a
 run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
+interpret = undefined
+
+reinterpret = undefined
+
 -- data IIdentity p q a where
 --  IIdentity :: a -> IIdentity p q a
 data IVoid p q a where

@@ -140,13 +140,13 @@ simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
-serverLoop :: Member (StateS Int) effs => MiniEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (State Int) effs => MiniEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
-    x <- getS
+    x <- get
     send x
     n :: Int <- recv
-    putS n
+    put n
     if n < 10
       then
         Ix.return Nothing
@@ -214,7 +214,7 @@ choice2 = Ix.do
           Ix.return x
     )
 
-simpleLoopingClientServer :: Member (StateS Int) effs => MiniEff effs IVoid () () ([()], [Int])
+simpleLoopingClientServer :: Member (State Int) effs => MiniEff effs IVoid () () ([()], [Int])
 simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::

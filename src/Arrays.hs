@@ -36,13 +36,6 @@ partition len arr = do
   write arr lastIndex i_value -- c
   return i
 
-forM_ :: (IMonad m) => [a] -> (a -> m i i ()) -> m i i ()
-forM_ [] _ = return ()
-forM_ [x] f =
-  f x
-forM_ (x : xs) f =
-  f x >>= \_c -> forM_ xs f
-
 example6 :: IO ()
 example6 = runArrays $ do
   let len = 10

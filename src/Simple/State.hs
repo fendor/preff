@@ -6,9 +6,9 @@ import Data.Typeable
 import MiniEff
 import qualified Control.IxMonad as Ix
 
-data StateS s x where
-  PutS :: s -> StateS s ()
-  GetS :: StateS s s
+data State s x where
+  Put :: s -> State s ()
+  Get :: State s s
   deriving (Typeable)
 
 data StateP s p q x where
@@ -43,25 +43,25 @@ runStateP s = \case
     (s', v) <- runStateP (f s) act
     runStateP s' $ runIKleisliTupled k v
 
-getS ::
-  (Member (StateS s) effs) =>
+get ::
+  (Member (State s) effs) =>
   MiniEff effs f ps ps s
-getS = send GetS
+get = send Get
 
-putS ::
-  ( Member (StateS s) effs
+put ::
+  ( Member (State s) effs
   ) =>
   s ->
   MiniEff effs f ps ps ()
-putS s = send $ PutS s
+put s = send $ Put s
 
 runState :: ScopedEffect f =>
   s ->
-  MiniEff (StateS s : effs) f ps qs a ->
+  MiniEff (State s : effs) f ps qs a ->
   MiniEff effs f ps qs (s, a)
 runState s (Value a) = Ix.return (s, a)
-runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
-runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
+runState s (Impure (OHere Get) k) = runState s (runIKleisliTupled k s)
+runState _s (Impure (OHere (Put s')) k) = runState s' (runIKleisliTupled k ())
 runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
 runState s (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runState s . runIKleisliTupled k)
 runState s (ScopedP op k) =
@@ -69,33 +69,35 @@ runState s (ScopedP op k) =
     (weave (s, ()) (uncurry runState) op)
     (IKleisliTupled $ \(s', a) -> runState s' $ runIKleisliTupled k a)
 
+execState s = Ix.imap snd . runState s
+
 stateExample ::
-  (Member (StateS Int) effs) =>
+  (Member (State Int) effs) =>
   MiniEff effs f ps ps String
 stateExample = Ix.do
-  i <- getS @Int
-  putS (i + i)
+  i <- get @Int
+  put (i + i)
   Ix.return $ show i
 
 ambiguityExample ::
-  (Member (StateS Int) effs) =>
+  (Member (State Int) effs) =>
   MiniEff effs f ps ps Int
 ambiguityExample = Ix.do
-  i <- getS
-  i2 <- getS
-  putS (i + i2)
+  i <- get
+  i2 <- get
+  put (i + i2)
   Ix.return $ i + i2
 
 moreExamples ::
-  ( Member (StateS Int) effs
-  , Member (StateS String) effs
+  ( Member (State Int) effs
+  , Member (State String) effs
   ) =>
   MiniEff effs f ps ps Int
 moreExamples = Ix.do
-  i <- getS -- :: forall js . MiniEff effs g ps js Int
-  i2 <- getS -- :: forall js . MiniEff effs g js qs Int
-  (m :: String) <- getS
-  putS (m ++ reverse m)
+  i <- get -- :: forall js . MiniEff effs g ps js Int
+  i2 <- get -- :: forall js . MiniEff effs g js qs Int
+  (m :: String) <- get
+  put (m ++ reverse m)
   _ <- ambiguityExample
   Ix.return $ i + i2
 
