@@ -237,22 +237,47 @@ interpret handler = \case
     ImpureP op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (nt handler) op)
+      (mapS emptyCtx (ntI handler) op)
       (IKleisliTupled $ \(_, x) -> interpret handler (runIKleisliTupled k x))
     where
       emptyCtx = ((), ())
 
--- nt :: ScopedEffect f => ((), MiniEff (eff : effs) f p q a)
---         -> MiniEff effs f p q ((), a)
-
-nt ::
+reinterpret :: ScopedEffect f => (forall u v. eff ~> MiniEff (newEff : effs) f u v) -> MiniEff (eff ': effs) f p q ~> MiniEff (newEff : effs) f p q
+reinterpret handler = \case
+  Value a -> Value a
+  Impure (OHere op) k -> Ix.do
+    x <- handler op
+    reinterpret handler (runIKleisliTupled k x)
+  Impure (OThere op) k ->
+    Impure (weaken op) (IKleisliTupled $ \x -> reinterpret handler (runIKleisliTupled k x))
+  ImpureP op k ->
+    ImpureP op (IKleisliTupled $ \x -> reinterpret handler (runIKleisliTupled k x))
+  ScopedP op k ->
+    ScopedP
+      (mapS emptyCtx (ntR handler) op)
+      (IKleisliTupled $ \(_, x) -> reinterpret handler (runIKleisliTupled k x))
+    where
+      emptyCtx = ((), ())
+ntI ::
   ScopedEffect f =>
   (forall u v. eff ~> MiniEff effs f u v)
   -> ((), MiniEff (eff : effs) f p3 q a)
   -> MiniEff effs f p3 q ((), a)
-nt h = \((), m) -> Ix.imap ((),) $ interpret h m
+ntI h = \((), m) -> Ix.imap ((),) $ interpret h m
 
-reinterpret = undefined
+ntR ::
+  ScopedEffect f =>
+  (forall u v. eff ~> MiniEff (new: effs) f u v)
+  -> ((), MiniEff (eff : effs) f p3 q a)
+  -> MiniEff (new: effs) f p3 q ((), a)
+ntR h = \((), m) -> Ix.imap ((),) $ reinterpret h m
+
+-- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
+-- more summand.
+--
+-- /O(1)/
+weaken :: Op xs a -> Op (x:xs) a
+weaken op = OThere op
 
 -- data IIdentity p q a where
 --  IIdentity :: a -> IIdentity p q a
