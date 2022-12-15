@@ -75,6 +75,25 @@ instance Functor (MiniEff effs f p q) where
   fmap f (ImpureP op k) = ImpureP op (IKleisliTupled $ fmap f . runIKleisliTupled k)
   fmap f (ScopedP op k) = ScopedP op (IKleisliTupled $ fmap f . runIKleisliTupled k)
 
+instance P.Applicative (MiniEff effs f p p) where
+  pure a = Value a
+
+  (<*>) ::
+    MiniEff effs f p p (a -> b) ->
+    MiniEff effs f p p a ->
+    MiniEff effs f p p b
+  (Value f) <*> k = P.fmap f k
+  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (ImpureP fop k') <*> k = ImpureP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  ScopedP fop k' <*> k = ScopedP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+
+instance P.Monad (MiniEff effs f p p) where
+  (>>=) :: MiniEff effs f p p a -> (a -> MiniEff effs f p p b) -> MiniEff effs f p p b
+  (Value a) >>= f = f a
+  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ImpureP o k) >>= f = ImpureP o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (ScopedP g k) >>= f = ScopedP g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+
 instance IFunctor (MiniEff effs f) where
   imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
