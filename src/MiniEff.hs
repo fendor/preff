@@ -239,7 +239,7 @@ interpret handler = \case
     ImpureP op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (ntI handler) op)
+      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ interpret handler m) op)
       (IKleisliTupled $ \(_, x) -> interpret handler (runIKleisliTupled k x))
     where
       emptyCtx = ((), ())
@@ -256,23 +256,27 @@ reinterpret handler = \case
     ImpureP op (IKleisliTupled $ \x -> reinterpret handler (runIKleisliTupled k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (ntR handler) op)
+      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
       (IKleisliTupled $ \(_, x) -> reinterpret handler (runIKleisliTupled k x))
     where
       emptyCtx = ((), ())
-ntI ::
-  ScopedEffect f =>
-  (forall u . eff ~> MiniEff effs f u u)
-  -> ((), MiniEff (eff : effs) f p q a)
-  -> MiniEff effs f p q ((), a)
-ntI h = \((), m) -> Ix.imap ((),) $ interpret h m
 
-ntR ::
-  ScopedEffect f =>
-  (forall u . eff ~> MiniEff (new: effs) f u u)
-  -> ((), MiniEff (eff : effs) f p q a)
-  -> MiniEff (new: effs) f p q ((), a)
-ntR h = \((), m) -> Ix.imap ((),) $ reinterpret h m
+reinterpret2 :: ScopedEffect f => (forall u . eff ~> MiniEff (e1 : e2 : effs) f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff (e1 : e2 : effs) f p q
+reinterpret2 handler = \case
+  Value a -> Value a
+  Impure (OHere op) k -> Ix.do
+    x <- handler op
+    reinterpret2 handler (runIKleisliTupled k x)
+  Impure (OThere op) k ->
+    Impure (weaken $ weaken op) (IKleisliTupled $ \x -> reinterpret2 handler (runIKleisliTupled k x))
+  ImpureP op k ->
+    ImpureP op (IKleisliTupled $ \x -> reinterpret2 handler (runIKleisliTupled k x))
+  ScopedP op k ->
+    ScopedP
+      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
+      (IKleisliTupled $ \(_, x) -> reinterpret2 handler (runIKleisliTupled k x))
+    where
+      emptyCtx = ((), ())
 
 -- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
 -- more summand.
