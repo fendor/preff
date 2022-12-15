@@ -221,7 +221,36 @@ type Gen a b = a -> b
 run :: MiniEff '[] IVoid p q a -> a
 run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
-interpret = undefined
+-- Natural transformation
+type (~>) f g = forall x . f x -> g x
+
+
+interpret :: ScopedEffect f => (forall u v. eff ~> MiniEff effs f u v) -> MiniEff (eff ': effs) f p q ~> MiniEff effs f p q
+interpret handler = \case
+  Value a -> Value a
+  Impure (OHere op) k -> Ix.do
+    x <- handler op
+    interpret handler (runIKleisliTupled k x)
+  Impure (OThere op) k ->
+    Impure op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
+  ImpureP op k ->
+    ImpureP op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
+  ScopedP op k ->
+    ScopedP
+      (mapS emptyCtx (nt handler) op)
+      (IKleisliTupled $ \(_, x) -> interpret handler (runIKleisliTupled k x))
+    where
+      emptyCtx = ((), ())
+
+-- nt :: ScopedEffect f => ((), MiniEff (eff : effs) f p q a)
+--         -> MiniEff effs f p q ((), a)
+
+nt ::
+  ScopedEffect f =>
+  (forall u v. eff ~> MiniEff effs f u v)
+  -> ((), MiniEff (eff : effs) f p3 q a)
+  -> MiniEff effs f p3 q ((), a)
+nt h = \((), m) -> Ix.imap ((),) $ interpret h m
 
 reinterpret = undefined
 
@@ -237,6 +266,18 @@ algScopedIVoid _ = error "Invalid"
 
 genIVoid :: Gen a a
 genIVoid x = x
+
+instance ScopedEffect IVoid where
+  mapS ::
+    Functor c =>
+    c ()
+    -> (forall r u v . c (m u v r) -> n u v (c r))
+    -> ScopeE IVoid m p p' q' q x x'
+    -> ScopeE IVoid n p p' q' q (c x) (c x')
+  mapS ctx nt s = absurdS s
+
+absurdS :: ScopeE IVoid m p p' q' q x x' -> a
+absurdS v = error "Absurd"
 
 -- runIIdentity :: IIdentity p q a -> a
 -- runIIdentity (IIdentity a) = a
