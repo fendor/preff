@@ -1,6 +1,7 @@
 module Control.IxMonad where
 
-import Prelude hiding (Monad(..), Applicative(..), Functor(..))
+import qualified Prelude as P
+import Prelude hiding (Monad(..), Applicative(..), Functor(..), mapM)
 import Data.Kind
 
 -- ------------------------------------------------
@@ -8,7 +9,7 @@ import Data.Kind
 -- ------------------------------------------------
 
 type IMonad :: (p -> p -> Type -> Type) -> Constraint
-class IMonad m where
+class IApplicative m => IMonad m where
   return :: a -> m i i a
   (>>=) :: m i j a -> (a -> m j k b) -> m i k b
   (>>) :: m i j a -> m j k b -> m i k b
@@ -29,7 +30,6 @@ class IFunctor f => IApplicative f where
     f i j b1 -> f j r b2 -> f i r b2
   a1 *> a2 = (id <$ a1) <*> a2
 
-
 -- ------------------------------------------------
 -- IMonad utilities
 -- ------------------------------------------------
@@ -48,3 +48,11 @@ forM_ [x] f =
   f x
 forM_ (x : xs) f =
   f x >>= \_c -> forM_ xs f
+
+mapM :: IMonad m => (a -> m p p b) -> [a] -> m p p [b]
+mapM f [] = return []
+mapM f (x:xs) =
+  f x >>= \c -> imap (c:) $ mapM f xs
+
+-- sequenceA :: (Traversable t, IApplicative f) => t (f p p a) -> f p p (t a)
+-- sequenceA =

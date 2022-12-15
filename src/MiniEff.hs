@@ -147,12 +147,14 @@ data family ScopeE f
 
 type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
 
+type HandlerS c m n = forall r u v . c (m u v r) -> n u v (c r)
+
 -- TODO: this is trash
 type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect f where
   mapS :: Functor c =>
     c () ->
-    (forall r u v . c (m u v r) -> n u v (c r)) ->
+    (HandlerS c m n) ->
     ScopeE f m p p' q' q x x' ->
     ScopeE f n p p' q' q (c x) (c x')
 
@@ -225,7 +227,7 @@ run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 type (~>) f g = forall x . f x -> g x
 
 
-interpret :: ScopedEffect f => (forall u v. eff ~> MiniEff effs f u v) -> MiniEff (eff ': effs) f p q ~> MiniEff effs f p q
+interpret :: ScopedEffect f => (forall u. eff ~> MiniEff effs f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff effs f p q
 interpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -242,7 +244,7 @@ interpret handler = \case
     where
       emptyCtx = ((), ())
 
-reinterpret :: ScopedEffect f => (forall u v. eff ~> MiniEff (newEff : effs) f u v) -> MiniEff (eff ': effs) f p q ~> MiniEff (newEff : effs) f p q
+reinterpret :: ScopedEffect f => (forall u . eff ~> MiniEff (newEff : effs) f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff (newEff : effs) f p q
 reinterpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -260,16 +262,16 @@ reinterpret handler = \case
       emptyCtx = ((), ())
 ntI ::
   ScopedEffect f =>
-  (forall u v. eff ~> MiniEff effs f u v)
-  -> ((), MiniEff (eff : effs) f p3 q a)
-  -> MiniEff effs f p3 q ((), a)
+  (forall u . eff ~> MiniEff effs f u u)
+  -> ((), MiniEff (eff : effs) f p q a)
+  -> MiniEff effs f p q ((), a)
 ntI h = \((), m) -> Ix.imap ((),) $ interpret h m
 
 ntR ::
   ScopedEffect f =>
-  (forall u v. eff ~> MiniEff (new: effs) f u v)
-  -> ((), MiniEff (eff : effs) f p3 q a)
-  -> MiniEff (new: effs) f p3 q ((), a)
+  (forall u . eff ~> MiniEff (new: effs) f u u)
+  -> ((), MiniEff (eff : effs) f p q a)
+  -> MiniEff (new: effs) f p q ((), a)
 ntR h = \((), m) -> Ix.imap ((),) $ reinterpret h m
 
 -- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one

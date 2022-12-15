@@ -46,6 +46,7 @@ library
     Simple.Examples
     Simple.State
     Simple.Reader
+    Simple.Writer
     Singletons
     -- Store
     MiniEff
