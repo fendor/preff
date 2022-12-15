@@ -7,12 +7,12 @@ import MiniEff
 import qualified Control.IxMonad as Ix
 
 data State s x where
-  Put :: s -> State s ()
+  Put :: !s -> State s ()
   Get :: State s s
   deriving (Typeable)
 
 data StateP s p q x where
-  PutP :: s -> StateP s () () ()
+  PutP :: !s -> StateP s () () ()
   GetP :: StateP s () () s
 
 data instance ScopeE (StateP s) m p p' q' q x x' where
