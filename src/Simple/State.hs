@@ -69,6 +69,7 @@ runState s (ScopedP op k) =
     (weave (s, ()) (uncurry runState) op)
     (IKleisliTupled $ \(s', a) -> runState s' $ runIKleisliTupled k a)
 
+execState :: ScopedEffect f => a -> MiniEff (State a : effs) f p q b -> MiniEff effs f p q b
 execState s = Ix.imap snd . runState s
 
 stateExample ::
