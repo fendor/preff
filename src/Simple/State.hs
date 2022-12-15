@@ -55,6 +55,13 @@ put ::
   MiniEff effs f ps ps ()
 put s = send $ Put s
 
+modify :: Member (State s) effs =>
+  (s -> s) ->
+  MiniEff effs f ps ps ()
+modify f = Ix.do
+  s <- get
+  put (f s)
+
 runState :: ScopedEffect f =>
   s ->
   MiniEff (State s : effs) f ps qs a ->
