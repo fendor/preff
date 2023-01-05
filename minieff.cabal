@@ -38,7 +38,6 @@ library
   import:           warnings, exts
   exposed-modules:
     Control.IxMonad
-    -- Arrays
     MiniEff.Parameterised.Array
     MiniEff.Parameterised.Protocol
     MiniEff.Parameterised.State
@@ -48,7 +47,6 @@ library
     MiniEff.Simple.Writer
     SerialArrays
     Singletons
-    -- Store
     MiniEff
 
   build-depends:
