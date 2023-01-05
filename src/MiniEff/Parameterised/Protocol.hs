@@ -1,11 +1,11 @@
 {-# LANGUAGE QualifiedDo #-}
 
-module Parameterised.Protocol where
+module MiniEff.Parameterised.Protocol where
 
 import Data.Kind
 import MiniEff hiding (send)
 import qualified Control.IxMonad as Ix
-import Simple.State
+import MiniEff.Simple.State
 
 -- type End :: Type
 data End

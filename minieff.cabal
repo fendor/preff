@@ -39,14 +39,14 @@ library
   exposed-modules:
     Control.IxMonad
     -- Arrays
-    Parameterised.Array
-    Parameterised.Protocol
-    Parameterised.State
+    MiniEff.Parameterised.Array
+    MiniEff.Parameterised.Protocol
+    MiniEff.Parameterised.State
+    MiniEff.Simple.Examples
+    MiniEff.Simple.State
+    MiniEff.Simple.Reader
+    MiniEff.Simple.Writer
     SerialArrays
-    Simple.Examples
-    Simple.State
-    Simple.Reader
-    Simple.Writer
     Singletons
     -- Store
     MiniEff

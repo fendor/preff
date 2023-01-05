@@ -1,12 +1,12 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
-module Parameterised.Array where
+module MiniEff.Parameterised.Array where
 
 import Control.Concurrent.STM
 import Data.Array.IO as IO
 import GHC.Types (Any)
-import Parameterised.State (Future (..))
+import MiniEff.Parameterised.State (Future (..))
 import Unsafe.Coerce (unsafeCoerce)
 import MiniEff
 import qualified Control.IxMonad as Ix

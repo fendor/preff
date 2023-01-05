@@ -1,6 +1,6 @@
 {-# LANGUAGE QualifiedDo #-}
 
-module Simple.State where
+module MiniEff.Simple.State where
 
 import Data.Typeable
 import MiniEff

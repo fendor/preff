@@ -13,7 +13,7 @@ module SerialArrays where
 import qualified Data.Array.IO as IO
 import Data.Complex
 import GHC.Types (Any)
-import Parameterised.Array hiding (afork, join, length, malloc, read, slice, write)
+import MiniEff.Parameterised.Array hiding (afork, join, length, malloc, read, slice, write)
 import Unsafe.Coerce (unsafeCoerce)
 import MiniEff
 import qualified Control.IxMonad as Ix

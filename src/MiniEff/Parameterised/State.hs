@@ -2,7 +2,7 @@
 {-# LANGUAGE QualifiedDo #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
-module Parameterised.State where
+module MiniEff.Parameterised.State where
 
 import Data.Kind
 import MiniEff

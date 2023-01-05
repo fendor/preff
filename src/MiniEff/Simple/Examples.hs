@@ -1,12 +1,12 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module Simple.Examples where
+module MiniEff.Simple.Examples where
 
 import Fcf
 import GHC.TypeLits
-import Simple.Reader
-import Simple.State
-import Parameterised.Protocol
+import MiniEff.Simple.Reader
+import MiniEff.Simple.State
+import MiniEff.Parameterised.Protocol
 import MiniEff
 import qualified Control.IxMonad as Ix
 

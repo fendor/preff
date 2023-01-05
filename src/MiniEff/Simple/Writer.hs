@@ -1,6 +1,6 @@
 {-# LANGUAGE QualifiedDo #-}
 
-module Simple.Writer where
+module MiniEff.Simple.Writer where
 import MiniEff
 import qualified Control.IxMonad as Ix
 

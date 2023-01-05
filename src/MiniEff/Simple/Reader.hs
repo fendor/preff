@@ -1,4 +1,4 @@
-module Simple.Reader where
+module MiniEff.Simple.Reader where
 
 import MiniEff
 import qualified Control.IxMonad as Ix
