@@ -1,0 +1,23 @@
+cabal-version:      3.0
+name:               ambiguity-effects
+version:            0.1.0.0
+license:            NONE
+author:             power.walross@gmail.com
+maintainer:         Fendor
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+
+    exposed-modules:  FreerSimple, FusedEffects, MiniEff, Mtl, Polysemy
+
+    build-depends:    base, polysemy, fused-effects, minieff, freer-simple, polysemy-plugin
+
+    -- Directories containing source files.
+    hs-source-dirs:   src
+
+    -- Base language which the package is written in.
+    default-language: Haskell2010

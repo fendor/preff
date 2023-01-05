@@ -1,0 +1,1 @@
+module FusedEffects where
