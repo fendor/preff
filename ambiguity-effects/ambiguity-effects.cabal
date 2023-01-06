@@ -1,23 +1,56 @@
-cabal-version:      3.0
-name:               ambiguity-effects
-version:            0.1.0.0
-license:            NONE
-author:             power.walross@gmail.com
-maintainer:         Fendor
-build-type:         Simple
+cabal-version: 3.0
+name:          ambiguity-effects
+version:       0.1.0.0
+license:
+author:        power.walross@gmail.com
+maintainer:    Fendor
+build-type:    Simple
 
 common warnings
-    ghc-options: -Wall
+  ghc-options: -Wall
+
+common exts
+  default-extensions:
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    InstanceSigs
+    LambdaCase
+    MultiParamTypeClasses
+    PartialTypeSignatures
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneKindSignatures
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    QualifiedDo
 
 library
-    import:           warnings
+  import:           warnings, exts
+  exposed-modules:
+    Ambig.FreerSimple
+    Ambig.FusedEffects
+    Ambig.MiniEff
+    Ambig.Mtl
+    Ambig.Polysemy
+    Ambig.PolysemyPlugin
 
-    exposed-modules:  FreerSimple, FusedEffects, MiniEff, Mtl, Polysemy
+  build-depends:
+    , base
+    , freer-simple
+    , fused-effects
+    , minieff
+    , polysemy
+    , polysemy-plugin
 
-    build-depends:    base, polysemy, fused-effects, minieff, freer-simple, polysemy-plugin
+  -- Directories containing source files.
+  hs-source-dirs:   src
 
-    -- Directories containing source files.
-    hs-source-dirs:   src
-
-    -- Base language which the package is written in.
-    default-language: Haskell2010
+  -- Base language which the package is written in.
+  default-language: Haskell2010
