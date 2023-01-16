@@ -73,15 +73,9 @@ instance Functor (MiniEff effs f p q) where
 
 instance P.Applicative (MiniEff effs f p p) where
   pure = Ix.pure
-
-  (<*>) ::
-    MiniEff effs f p p (a -> b) ->
-    MiniEff effs f p p a ->
-    MiniEff effs f p p b
   f <*> x = f Ix.<*> x
 
 instance P.Monad (MiniEff effs f p p) where
-  (>>=) :: MiniEff effs f p p a -> (a -> MiniEff effs f p p b) -> MiniEff effs f p p b
   a >>= f = a Ix.>>= f
 
 instance IFunctor (MiniEff effs f) where

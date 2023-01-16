@@ -26,42 +26,44 @@ common exts
     MultiParamTypeClasses
     PartialTypeSignatures
     PolyKinds
+    QualifiedDo
     RankNTypes
     ScopedTypeVariables
     StandaloneKindSignatures
     TypeApplications
     TypeFamilies
     TypeOperators
-    QualifiedDo
 
 library
   import:           warnings, exts
   exposed-modules:
     Control.IxMonad
+    MiniEff
     MiniEff.Parameterised.Array
     MiniEff.Parameterised.Protocol
     MiniEff.Parameterised.State
     MiniEff.Simple.Examples
-    MiniEff.Simple.State
     MiniEff.Simple.Reader
+    MiniEff.Simple.State
     MiniEff.Simple.Writer
+    PMiniEff
     SerialArrays
     Singletons
-    MiniEff
 
   build-depends:
     , array
     , base                  >=4.14.3.0
     , containers
+    , first-class-families
     , ghc
     , ghc-prim
     , random
-    , stm
     , singletons
     , singletons-base
-    , first-class-families
+    , stm
 
   -- Directories containing source files.
   hs-source-dirs:   src
+
   -- ghc-options:      -Wno-unticked-promoted-constructors
   default-language: GHC2021
