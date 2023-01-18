@@ -11,7 +11,7 @@ import Unsafe.Coerce
 data IProg f g p q a where
   Pure :: a -> IProg f g p p a
   Impure ::
-    Op f p q x ->
+    f p q x ->
     IKleisliTupled (IProg f g) '(q, x) '(r, a) ->
     -- (x -> IProg f g q r a)
     IProg f g p r a
@@ -110,13 +110,28 @@ type Op :: forall k.
   Type
 data Op effs t1 t2 x where
   OHere ::
-    forall x f1 effs sl1 sl2 sr .
     f1 sl1 sl2 x ->
     Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
   OThere ::
-    forall x eff effs sr1 sr2 sl .
     Op effs sr1 sr2 x ->
     Op (eff : effs) (sl ': sr1) (sl ': sr2) x
+
+infixr 5 :+:
+type (:+:) ::
+  forall sl sr.
+  (sl -> sl -> Type -> Type) ->
+  (sr -> sr -> Type -> Type) ->
+  (sl, sr) ->
+  (sl, sr) ->
+  Type ->
+  Type
+data (f1 :+: f2) p q x where
+  PInl ::
+    f1 p q x ->
+    (f1 :+: f2) '(p, sr) '(q, sr) x
+  PInr ::
+    f2 sr1 sr2 x ->
+    (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
 
 infixr 5 :++:
 type (:++:) ::
@@ -143,13 +158,18 @@ type IVoid :: forall k.
   k -> k -> k -> k -> Type -> Type -> Type
 data IVoid m p p' q' q x x'
 
-runI :: IProg '[IIdentity] IVoid '[()] '[()] a -> a
+runI :: IProg (Op '[IIdentity]) IVoid '[()] '[()] a -> a
 runI (Pure a) = a
 runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
 runI (Impure (OThere _) _k) = error "Impossible"
 runI (Scope _ _) = error "Impossible"
 
-run :: IProg '[] IVoid '[] '[] a -> a
+runI2 :: IProg IIdentity IVoid '() '() a -> a
+runI2 (Pure a) = a
+runI2 (Impure cmd k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
+runI2 (Scope _ _) = error "Impossible"
+
+run :: IProg (Op '[]) IVoid '[] '[] a -> a
 run (Pure a) = a
 run (Impure _ _) = error "Impossible"
 run (Scope _ _) = error "Impossible"
@@ -167,7 +187,7 @@ type IIO :: forall k. k -> k -> Type -> Type
 data IIO p q a where
   RunIO :: IO a -> IIO p p a
 
-runIO :: IProg '[IIO] IVoid p q a -> IO a
+runIO :: IProg (Op '[IIO]) IVoid p q a -> IO a
 runIO (Pure a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
@@ -195,3 +215,60 @@ inj pval op = go (natVal pval)
     -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
     go 0 = unsafeCoerce OHere op
     go n = unsafeCoerce OThere (go (n - 1))
+
+data S a
+data Z
+
+data State p q a where
+  Put :: x -> State p x ()
+  Get :: State p p p
+
+get :: IProg (State :+: r) g '(p, ys) '(p, ys) p
+get = Impure (PInl Get) (IKleisliTupled $ \x -> Ix.return x)
+
+put :: q -> IProg (State :+: r) g '(p, ys) '(q, ys) ()
+put q = Impure (PInl $ Put q) (IKleisliTupled $ \x -> Ix.return x)
+
+data Reader e p q a where
+  Ask :: Reader e (S z) z e
+
+askL2 :: IProg (a :+: Reader e :+: r) g '(p1, '(S x, p2)) '(p1, '(x, p2)) e
+askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
+
+foo :: IProg
+  (State :+: Reader Int :+: IIdentity)
+  g
+  '(Int, '(S (S Z), '()))
+  '(String, '(Z, '()))
+  Int
+foo = Ix.do
+  x <- askL2
+  y <- askL2
+  let r = x + y
+  put (show r)
+  Ix.return r
+
+runStateAI ::
+  p ->
+  IProg (State :+: eff) IVoid '(p, sr1) '(q, sr2) a ->
+  IProg eff IVoid sr1 sr2 (a, q)
+runStateAI p (Pure x) = Ix.return (x, p)
+runStateAI p (Impure (PInl Get) k) =
+  runStateAI p (runIKleisliTupled k p)
+runStateAI _ (Impure (PInl (Put q)) k) =
+  runStateAI q (runIKleisliTupled k ())
+runStateAI p (Impure (PInr op) k) =
+  Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
+
+runReaderL ::
+  e ->
+  IProg (Reader e :+: eff) IVoid '(p, sr1) '(Z, sr2) a ->
+  IProg eff IVoid sr1 sr2 a
+runReaderL _ (Pure x) = Ix.return x
+runReaderL p (Impure (PInl Ask) k) =
+  runReaderL p (runIKleisliTupled k p)
+runReaderL p (Impure (PInr op) k) =
+  Impure op $ IKleisliTupled $ \x -> runReaderL p (runIKleisliTupled k x)
+runReaderL _p (Scope _ _) = error "GHC is not exhaustive"
+
