@@ -88,38 +88,21 @@ transformKleisli ::
   IKleisliTupled m ia ob2
 transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
--- type Op :: forall k.
---   [k -> k -> Type -> Type] ->
---   [k] ->
---   [k] ->
---   Type ->
---   Type
--- data Op effs t1 t2 x where
---   OHere ::
---     forall x f1 effs sl1 sl2 sr1 sr2 .
---     f1 sl1 sl2 x ->
---     Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   OThere ::
---     forall x eff effs sr1 sr2 sl1 sl2 .
---     Op effs sr1 sr2 x ->
---     Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   deriving (Typeable)
-
 -- Less general instance, note the entries sl and sr in the type level list
-type Op ::
-  forall k.
-  [k -> k -> Type -> Type] ->
-  [k] ->
-  [k] ->
+
+type Op :: forall s k t .
+  (s -> s -> Type -> Type, k) ->
+  (s, t) ->
+  (s, t) ->
   Type ->
   Type
-data Op effs t1 t2 x where
+data Op effs ps qs x where
   OHere ::
     f1 sl1 sl2 x ->
-    Op (f1 : effs) (sl1 ': sr) (sl2 ': sr) x
+    Op '(f1, effs) '(sl1, sr) '(sl2, sr) x
   OThere ::
     Op effs sr1 sr2 x ->
-    Op (eff : effs) (sl ': sr1) (sl ': sr2) x
+    Op '(eff, effs) '(sl, sr1) '(sl, sr2) x
 
 infixr 5 :+:
 type (:+:) ::
@@ -179,27 +162,19 @@ data family ScopeE f
 
 type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
 
-runI :: MiniEffP (Op '[IIdentity]) '[()] '[()] a -> a
-runI (Pure a) = a
-runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
-runI (Impure (OThere _) _k) = error "Impossible"
-runI (Scope _ _) = error "Impossible"
-
-runI2 :: MiniEffP IIdentity '() '() a -> a
+runI2 :: MiniEffP IIdentity () () a -> a
 runI2 (Pure a) = a
-runI2 (Impure cmd k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
+runI2 (Impure (IIdentity a) k) = runI2 $ runIKleisliTupled k a
 runI2 (Scope _ _) = error "Impossible"
-
-run :: MiniEffP (Op '[]) '[] '[] a -> a
-run (Pure a) = a
-run (Impure _ _) = error "Impossible"
-run (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
 
-newtype IIdentity p q a = IIdentity a deriving (Show)
+data IIdentity p q a where
+  IIdentity :: a -> IIdentity p p a
+
+deriving instance Show a => Show (IIdentity p q a)
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
@@ -207,12 +182,6 @@ runIdentity (IIdentity a) = a
 type IIO :: forall k. k -> k -> Type -> Type
 data IIO p q a where
   RunIO :: IO a -> IIO p p a
-
-runIO :: MiniEffP (Op '[IIO]) p q a -> IO a
-runIO (Pure a) = P.pure a
-runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
-runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (Scope _ _) = error "Impossible"
 
 type family FindEff e effs :: Natural where
   FindEff e '[] = TypeError (Text "Not found")
@@ -296,8 +265,8 @@ askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
 foo ::
   MiniEffP
     (State :+: Reader Int :+: IIdentity)
-    '(Int, '(S (S Z), '()))
-    '(String, '(Z, '()))
+    '(Int, '(S (S Z), ()))
+    '(String, '(Z, ()))
     Int
 foo = Ix.do
   x <- askL2

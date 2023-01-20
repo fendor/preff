@@ -485,7 +485,7 @@ instance
     ) =>
   Member e '[]
   where
-  inj = error "The instance of Member e p q '[] must never be selected"
+  inj = error "The instance of Member e '[] must never be selected"
 
 -- ------------------------------------------------
 -- Rebindable Syntax and IMonad Utils
