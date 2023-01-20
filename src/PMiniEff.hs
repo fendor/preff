@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 module PMiniEff where
 
@@ -8,6 +9,7 @@ import GHC.TypeLits hiding (Nat)
 import Unsafe.Coerce
 import Prelude hiding (Applicative (..), Monad (..))
 import Prelude qualified as P
+import Data.Proxy
 
 data MiniEffP f p q a where
   Pure :: a -> MiniEffP f p p a
@@ -136,6 +138,10 @@ data (f1 :+: f2) p q x where
     f2 sr1 sr2 x ->
     (f1 :+: f2) '(sl, sr1) '(sl, sr2) x
 
+instance (Show (f p q x), Show (g ps qs x)) => Show ((f :+: g) '(p, ps) '(q, qs) x) where
+  show (PInl f) = "PInl (" <> show f <> ")"
+  show (PInr g) = "PInr (" <> show g <> ")"
+
 infixr 5 :++:
 type (:++:) ::
   forall sl sr.
@@ -193,7 +199,7 @@ run (Scope _ _) = error "Impossible"
 -- Sem Monad and Simple Runners
 -- ------------------------------------------------
 
-newtype IIdentity p q a = IIdentity a
+newtype IIdentity p q a = IIdentity a deriving (Show)
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
@@ -211,11 +217,11 @@ runIO (Scope _ _) = error "Impossible"
 type family FindEff e effs :: Natural where
   FindEff e '[] = TypeError (Text "Not found")
   FindEff e (e ': eff) = 0
-  FindEff e (e' ': eff) = 1 + FindEff e eff
+  FindEff e (f ': eff) = 1 + FindEff e eff
 
 type family Write ind p ps where
   Write _ _ '[] = TypeError (Text "This sucks")
-  Write 0 p (x : xs) = p : xs
+  Write 0 p (_ : xs) = p : xs
   Write n p (x : xs) = x : Write (n - 1) p xs
 
 type family Assume ind ps where
@@ -234,8 +240,36 @@ inj pval op = go (natVal pval)
   go 0 = unsafeCoerce OHere op
   go n = unsafeCoerce OThere (go (n - 1))
 
+-- class PMember e p q effs pres posts where
+--   injC :: e p q a -> effs pres posts a
+
+-- instance {-# OVERLAPPING #-} PMember e p q (e :+: effs) '(p, ps) '(q, qs) where
+--   injC ::
+--     e p q a ->
+--     (e :+: effs) '(p, ps) '(q, qs) a
+--   injC e = unsafeCoerce PInl e
+
+-- instance {-# INCOHERENT #-} PMember e p q effs ps qs => PMember e p q (eff :+: effs) '(s, ps) '(t, qs) where
+--   injC = unsafeCoerce PInr . injC
+
+-- instance
+--   TypeError (Text "Failed to resolve effect " :<>: ShowType e :$$:
+--              Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+--             )
+--   => PMember e p q IIdentity '() '() where
+--     injC = error "The instance of Member e p q '[] '[] '[] must never be selected"
+
+
 data S a
 data Z
+
+data StateP p q a where
+  PutP :: q -> StateP p q ()
+  GetP :: StateP p p p
+
+instance (Show q, Show p, Show x) => Show (StateP p q x) where
+  show (PutP q) = "PutP " ++ show q
+  show GetP = "GetP"
 
 data State p q a where
   Put :: x -> State p x ()
@@ -249,6 +283,12 @@ put q = Impure (PInl $ Put q) (IKleisliTupled $ \x -> Ix.return x)
 
 data Reader e p q a where
   Ask :: Reader e (S z) z e
+
+instance Show (Reader e p q a) where
+  show Ask = "Ask"
+
+data InputC p q a where
+  Input :: InputC (x ': q) q x
 
 askL2 :: MiniEffP (a :+: Reader e :+: r) '(p1, '(S x, p2)) '(p1, '(x, p2)) e
 askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
@@ -289,3 +329,21 @@ runReaderL p (Impure (PInl Ask) k) =
 runReaderL p (Impure (PInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runReaderL p (runIKleisliTupled k x)
 runReaderL _p (Scope _ _) = error "GHC is not exhaustive"
+
+data family HList (l::[Type])
+
+data instance HList '[] = HNil
+data instance HList (x ': xs) = x `HCons` HList xs
+
+runInputC ::
+  HList p ->
+  MiniEffP (InputC :+: eff) '(p, sr1) '( '[], sr2) a ->
+  MiniEffP eff sr1 sr2 a
+runInputC l = \case
+  Pure x -> Ix.return x
+  Impure (PInl Input) k -> case l of
+    HCons p r ->
+      runInputC r (runIKleisliTupled k p)
+  Impure (PInr op) k ->
+    Impure op $ IKleisliTupled $ \x -> runInputC l (runIKleisliTupled k x)
+  _ -> error "Don't care for now"

@@ -38,6 +38,7 @@ library
   import:           warnings, exts
   exposed-modules:
     Control.IxMonad
+    Data.ListP
     MiniEff
     MiniEff.Parameterised.Array
     MiniEff.Parameterised.Protocol
