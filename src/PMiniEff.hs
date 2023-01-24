@@ -9,7 +9,7 @@ import GHC.TypeLits hiding (Nat)
 import Unsafe.Coerce
 import Prelude hiding (Applicative (..), Monad (..))
 import Prelude qualified as P
-import Data.Proxy
+import qualified Fcf
 
 data MiniEffP f p q a where
   Pure :: a -> MiniEffP f p p a
@@ -104,6 +104,13 @@ data Op effs ps qs x where
     Op effs sr1 sr2 x ->
     Op '(eff, effs) '(sl, sr1) '(sl, sr2) x
 
+instance Show (f p q x) => Show (Op '(f, IIdentity) '(p, ()) '(q, ()) x) where
+  show (OHere f) = "OHere " <> show f
+
+instance (Show (f p q x), Show (Op g ps qs x)) => Show (Op '(f, g) '(p, ps) '(q, qs) x) where
+  show (OHere f) = "OHere " <> show f
+  show (OThere g) = "OThere (" <> show g <> ")"
+
 infixr 5 :+:
 type (:+:) ::
   forall sl sr.
@@ -188,6 +195,11 @@ type family FindEff e effs :: Natural where
   FindEff e (e ': eff) = 0
   FindEff e (f ': eff) = 1 + FindEff e eff
 
+type family FindEffT e effs :: Natural where
+  FindEffT e () = TypeError (Text "Not found")
+  FindEffT e (e, eff) = 0
+  FindEffT e (f, eff) = 1 + FindEffT e eff
+
 type family Write ind p ps where
   Write _ _ '[] = TypeError (Text "This sucks")
   Write 0 p (_ : xs) = p : xs
@@ -262,18 +274,18 @@ data InputC p q a where
 askL2 :: MiniEffP (a :+: Reader e :+: r) '(p1, '(S x, p2)) '(p1, '(x, p2)) e
 askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
 
-foo ::
-  MiniEffP
-    (State :+: Reader Int :+: IIdentity)
-    '(Int, '(S (S Z), ()))
-    '(String, '(Z, ()))
-    Int
-foo = Ix.do
-  x <- askL2
-  y <- askL2
-  let r = x + y
-  put (show r)
-  Ix.return r
+-- foo ::
+--   MiniEffP
+--     (State :+: Reader Int :+: IIdentity)
+--     '(Int, '(S (S Z), ()))
+--     '(String, '(Z, ()))
+--     Int
+-- foo = Ix.do
+--   x <- askL2
+--   y <- askL2
+--   let r = x + y
+--   put (show r)
+--   Ix.return r
 
 runStateAI ::
   p ->
@@ -316,3 +328,13 @@ runInputC l = \case
   Impure (PInr op) k ->
     Impure op $ IKleisliTupled $ \x -> runInputC l (runIKleisliTupled k x)
   _ -> error "Don't care for now"
+
+foo ::
+  ( FindEffT StateP effs ~ i
+  ) =>
+  MiniEffP effs ps qs Int
+foo = Ix.do
+  x <- getP
+  putP (show x)
+  Ix.return 5
+
