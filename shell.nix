@@ -9,8 +9,8 @@ stdenv.mkDerivation {
     gmp
     zlib
     ncurses
-    haskell.compiler.ghc943
-    (haskell-language-server.override { supportedGhcVersions = ["943"]; })
+    haskell.compiler.ghc944
+    (haskell-language-server.override { supportedGhcVersions = ["944"]; })
     haskellPackages.cabal-install
     haskellPackages.fourmolu
   ];
