@@ -5,11 +5,12 @@ module PMiniEff where
 
 import Control.IxMonad as Ix
 import Data.Kind (Type)
-import GHC.TypeLits hiding (Nat)
+import GHC.TypeLits
 import Unsafe.Coerce
 import Prelude hiding (Applicative (..), Monad (..))
 import Prelude qualified as P
 import qualified Fcf
+import Data.Proxy
 
 data MiniEffP f p q a where
   Pure :: a -> MiniEffP f p p a
@@ -195,27 +196,53 @@ type family FindEff e effs :: Natural where
   FindEff e (e ': eff) = 0
   FindEff e (f ': eff) = 1 + FindEff e eff
 
-type family FindEffT e effs :: Natural where
-  FindEffT e () = TypeError (Text "Not found")
-  FindEffT e (e, eff) = 0
-  FindEffT e (f, eff) = 1 + FindEffT e eff
+type FindEffT :: forall k t .
+  k ->
+  (k, t) ->
+  Nat
+type family FindEffT e effs :: Nat where
+  FindEffT e '(e, ()) = 0
+  FindEffT e '(f, ()) = TypeError (Text "Not found")
+  FindEffT e '(e, eff) = 0
+  FindEffT e '(f, eff) = 1 + FindEffT e eff
 
 type family Write ind p ps where
   Write _ _ '[] = TypeError (Text "This sucks")
   Write 0 p (_ : xs) = p : xs
   Write n p (x : xs) = x : Write (n - 1) p xs
 
+
+type WriteT :: forall k t.
+  Natural ->
+  k ->
+  (k, t) ->
+  (k, t)
+type family WriteT ind p ps where
+  WriteT 0 p '(_, ()) = '(p, ())
+  WriteT _ _ '(_, ()) = TypeError (Text "This sucks")
+  WriteT 0 p '(_, xs) = '(p, xs)
+  WriteT n p '(x, xs) = '(x, WriteT (n - 1) p xs)
+
 type family Assume ind ps where
   Assume _ '[] = TypeError (Text "This sucks")
   Assume 0 (x : xs) = x
   Assume n (x : xs) = Assume (n - 1) xs
 
+type AssumeT :: forall k t.
+  Natural ->
+  (k, t) ->
+  k
+type family AssumeT ind ps where
+  AssumeT 0 '(x, ()) = x
+  AssumeT n '(x, ()) = TypeError (Text "This sucks")
+  AssumeT 0 '(x, xs) = x
+  AssumeT n '(x, xs) = AssumeT (n - 1) xs
+
 inj ::
-  KnownNat n =>
-  proxy n ->
+  Integer ->
   e p q a ->
   Op effs ps qs a
-inj pval op = go (natVal pval)
+inj pval op = go pval
  where
   -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
   go 0 = unsafeCoerce OHere op
@@ -247,6 +274,28 @@ data Z
 data StateP p q a where
   PutP :: q -> StateP p q ()
   GetP :: StateP p p p
+
+getP :: forall i ps qs p effs .
+  ( KnownNat i
+  , FindEffT StateP effs ~ i
+  , AssumeT i ps ~ p
+  , WriteT i p ps ~ qs
+  ) =>
+  MiniEffP (Op effs) ps qs p
+getP = Impure (inj n GetP) emptyCont
+  where
+    n = natVal (Proxy :: Proxy i)
+
+putP :: forall i ps qs p effs .
+  ( KnownNat i
+  , FindEffT StateP effs ~ i
+  , WriteT i p ps ~ qs
+  ) =>
+  p ->
+  MiniEffP (Op effs) ps qs ()
+putP p = Impure (inj n (PutP p)) emptyCont
+  where
+    n = natVal (Proxy :: Proxy i)
 
 instance (Show q, Show p, Show x) => Show (StateP p q x) where
   show (PutP q) = "PutP " ++ show q
@@ -330,11 +379,13 @@ runInputC l = \case
   _ -> error "Don't care for now"
 
 foo ::
-  ( FindEffT StateP effs ~ i
+  ( KnownNat i
+  , FindEffT StateP effs ~ i
+  , AssumeT i ps ~ Int
+  , WriteT i String ps ~ qs
   ) =>
-  MiniEffP effs ps qs Int
+  MiniEffP (Op effs) ps qs Int
 foo = Ix.do
   x <- getP
   putP (show x)
   Ix.return 5
-
