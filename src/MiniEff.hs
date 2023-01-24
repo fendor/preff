@@ -469,9 +469,6 @@ class Member f effs where
   inj :: f a -> Op effs a
 
 instance {-# OVERLAPPING #-} Member e (e ': effs) where
-  -- inj ::
-  --   e () () a ->
-  --   Op (e ': effs) (() ': ps) (() ': ps) a
   inj :: f a -> Op (f : effs) a
   inj e = OHere e
 
