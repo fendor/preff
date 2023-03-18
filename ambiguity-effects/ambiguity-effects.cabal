@@ -45,7 +45,7 @@ library
     , base
     , freer-simple
     , fused-effects
-    , minieff
+    , preff
     , polysemy
     , polysemy-plugin
 
