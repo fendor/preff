@@ -1,11 +1,11 @@
 {-# LANGUAGE QualifiedDo #-}
 
-module MiniEff.Parameterised.Protocol where
+module PrEff.Parameterised.Protocol where
 
 import Data.Kind
-import MiniEff hiding (send)
+import PrEff hiding (send)
 import qualified Control.IxMonad as Ix
-import MiniEff.Simple.State
+import PrEff.Simple.State
 
 -- type End :: Type
 data End
@@ -95,52 +95,52 @@ type family Dual proc where
 send ::
   forall a effs p.
   a ->
-  MiniEff effs Protocol (S a : p) p ()
+  PrEff effs Protocol (S a : p) p ()
 send a = sendP (Send a)
 
 recv ::
   forall a p effs.
-  MiniEff effs Protocol (R a : p) p a
+  PrEff effs Protocol (R a : p) p a
 recv = sendP Recv
 
 sel1 ::
-  MiniEff effs Protocol p' '[End] a ->
-  MiniEff effs Protocol (C p' b : r) r a
+  PrEff effs Protocol p' '[End] a ->
+  PrEff effs Protocol (C p' b : r) r a
 sel1 act = sendScoped (Sel1 act)
 
 sel2 ::
-  MiniEff effs Protocol p' '[End] a1 ->
-  MiniEff effs Protocol (C a2 p' : r) r a1
+  PrEff effs Protocol p' '[End] a1 ->
+  PrEff effs Protocol (C a2 p' : r) r a1
 sel2 act = sendScoped (Sel2 act)
 
 offer ::
-  MiniEff effs Protocol a1 '[End] a2 ->
-  MiniEff effs Protocol b '[End] a2 ->
-  MiniEff effs Protocol (O a1 b : r) r a2
+  PrEff effs Protocol a1 '[End] a2 ->
+  PrEff effs Protocol b '[End] a2 ->
+  PrEff effs Protocol (O a1 b : r) r a2
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
-  MiniEff effs Protocol a '[End] (Maybe x) ->
-  MiniEff effs Protocol (SLU a: r) r [x]
+  PrEff effs Protocol a '[End] (Maybe x) ->
+  PrEff effs Protocol (SLU a: r) r [x]
 loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
-  MiniEff effs Protocol a '[End] x ->
-  MiniEff effs Protocol (CLU a: r) r [x]
+  PrEff effs Protocol a '[End] x ->
+  PrEff effs Protocol (CLU a: r) r [x]
 loopC act = sendScoped (LoopCUnbounded act)
 
-simpleServer :: MiniEff effs Protocol (S Int : R String : k) k String
+simpleServer :: PrEff effs Protocol (S Int : R String : k) k String
 simpleServer = Ix.do
   send @Int 5
   s <- recv @String
   Ix.return s
 
-simpleClient :: MiniEff effs Protocol (R Int : S String : k) k ()
+simpleClient :: PrEff effs Protocol (R Int : S String : k) k ()
 simpleClient = Ix.do
   n <- recv @Int
   send (show $ n * 25)
 
-serverLoop :: Member (State Int) effs => MiniEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (State Int) effs => PrEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- get
@@ -153,7 +153,7 @@ serverLoop = Ix.do
       else
         Ix.return $ Just n
 
-clientLoop :: MiniEff effs Protocol (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: PrEff effs Protocol (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -161,7 +161,7 @@ clientLoop = Ix.do
     Ix.return ()
 
 choice ::
-  MiniEff
+  PrEff
     effs
     Protocol
     (S Int : C '[R Int, End] b : k2)
@@ -174,7 +174,7 @@ choice = Ix.do
     Ix.return n
 
 andOffer ::
-  MiniEff
+  PrEff
     effs
     Protocol
     (R Int : O '[S Int, End] '[S Int, End] : k)
@@ -192,7 +192,7 @@ andOffer = Ix.do
   Ix.return ()
 
 choice2 ::
-  MiniEff
+  PrEff
     effs
     Protocol
     (R Int : C '[R String, End] '[S String, R String, End] : k)
@@ -214,14 +214,14 @@ choice2 = Ix.do
           Ix.return x
     )
 
-simpleLoopingClientServer :: Member (State Int) effs => MiniEff effs IVoid () () ([()], [Int])
+simpleLoopingClientServer :: Member (State Int) effs => PrEff effs IVoid () () ([()], [Int])
 simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  MiniEff '[] Protocol p1 '[End] a ->
-  MiniEff '[] Protocol p2 '[End] b ->
-  MiniEff '[] IVoid () () (a, b)
+  PrEff '[] Protocol p1 '[End] a ->
+  PrEff '[] Protocol p2 '[End] b ->
+  PrEff '[] IVoid () () (a, b)
 connect (Value x) (Value y) = Ix.return (x, y)
 connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
@@ -254,9 +254,9 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  MiniEff effs Protocol p1 '[End] a ->
-  MiniEff effs Protocol p2 '[End] b ->
-  MiniEff effs IVoid () () (a, b)
+  PrEff effs Protocol p1 '[End] a ->
+  PrEff effs Protocol p2 '[End] b ->
+  PrEff effs IVoid () () (a, b)
 connect' (Value x) (Value y) = Ix.return (x, y)
 connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
 connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)

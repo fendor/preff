@@ -1,25 +1,25 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module MiniEff.Simple.Examples where
+module PrEff.Simple.Examples where
 
 import Fcf
 import GHC.TypeLits
-import MiniEff.Simple.Reader
-import MiniEff.Simple.State
-import MiniEff.Parameterised.Protocol
-import MiniEff
+import PrEff.Simple.Reader
+import PrEff.Simple.State
+import PrEff.Parameterised.Protocol
+import PrEff
 import qualified Control.IxMonad as Ix
 
 readerExample :: Member (Reader e) eff =>
-  MiniEff eff g p p e
+  PrEff eff g p p e
 readerExample = Ix.do
   x <- ask
   Ix.return x
 
 -- runStateProt ::
 --   e ->
---   MiniEff (StateS e: effs) Protocol p q a ->
---   MiniEff effs Protocol p q (e, a)
+--   PrEff (StateS e: effs) Protocol p q a ->
+--   PrEff effs Protocol p q (e, a)
 -- runStateProt s (Value a) = Ix.return (s, a)
 -- runStateProt s (Impure (OHere GetS) k) = runStateProt s (runIKleisliTupled k s)
 -- runStateProt _s (Impure (OHere (PutS s')) k) = runStateProt s' (runIKleisliTupled k ())
@@ -34,9 +34,9 @@ readerExample = Ix.do
 --   _ -> undefined
 
 -- runS :: e
---   -> MiniEff (StateS e: effs) Protocol p' q' x
---   -> MiniEff effs Protocol p' q'
---       (ScopedE Protocol (MiniEff effs Protocol) p p' q' q (e, x) (e, [x]))
+--   -> PrEff (StateS e: effs) Protocol p' q' x
+--   -> PrEff effs Protocol p' q'
+--       (ScopedE Protocol (PrEff effs Protocol) p p' q' q (e, x) (e, [x]))
 -- runS e act = Ix.do
 --   let m' = runStateProt e act
 --   Ix.return $ LoopCUnbounded m'

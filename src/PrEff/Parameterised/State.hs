@@ -2,10 +2,10 @@
 {-# LANGUAGE QualifiedDo #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
-module MiniEff.Parameterised.State where
+module PrEff.Parameterised.State where
 
 import Data.Kind
-import MiniEff
+import PrEff
 import qualified Control.IxMonad as Ix
 import Prelude hiding (Monad (..))
 
@@ -25,7 +25,7 @@ data instance ScopeE StateF m p p' q' q x x' where
   Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeE StateF m p1 p2 q2 q1 a (Future a)
   Finish :: m p2 q2 a -> ScopeE StateF m p p q p a a
 
-type Token :: Type -> MiniEff.Nat -> Type
+type Token :: Type -> PrEff.Nat -> Type
 newtype Token t n = Token ()
 
 data Future a = Future
@@ -46,16 +46,16 @@ data StateP p q a where
 
 putAI ::
   p ->
-  MiniEff effs StateP q p ()
+  PrEff effs StateP q p ()
 putAI p = ImpureP (PutP p) emptyCont
 
 getAI ::
-  MiniEff effs StateP p p p
+  PrEff effs StateP p p p
 getAI = ImpureP (GetP) emptyCont
 
 stateChangeExp ::
-  MiniEff effs StateP String Int String
--- stateChangeExp :: MiniEff '[StateA] StateAG '[String] '[Int] String
+  PrEff effs StateP String Int String
+-- stateChangeExp :: PrEff '[StateA] StateAG '[String] '[Int] String
 stateChangeExp = Ix.do
   s <- getAI
   -- putAI ("Test" :: String)
@@ -68,8 +68,8 @@ runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
 
 modifyP' ::
   (p -> p') ->
-  MiniEff effs StateP p' q' a ->
-  MiniEff effs StateP p p a
+  PrEff effs StateP p' q' a ->
+  PrEff effs StateP p p a
 modifyP' f act = ScopedP (ModifyP f act) emptyCont
 
 data instance ScopeE StateP m p p' q' q x x' where
@@ -84,8 +84,8 @@ instance ScopedEffect StateP where
 
 runStateAIG ::
   p ->
-  MiniEff eff StateP p q a ->
-  MiniEff eff IVoid () () (a, q)
+  PrEff eff StateP p q a ->
+  PrEff eff IVoid () () (a, q)
 runStateAIG p (Value x) = Ix.return (x, p)
 runStateAIG p (Impure cmd k) =
   Impure cmd $

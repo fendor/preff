@@ -1,7 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module PMiniEff where
+module PPrEff where
 
 import Control.IxMonad as Ix
 import Data.Kind (Type)
@@ -12,47 +12,47 @@ import Prelude qualified as P
 import qualified Fcf
 import Data.Proxy
 
-data MiniEffP f p q a where
-  Pure :: a -> MiniEffP f p p a
+data PrEffP f p q a where
+  Pure :: a -> PrEffP f p p a
   Impure ::
     f p q x ->
-    IKleisliTupled (MiniEffP f) '(q, x) '(r, a) ->
-    -- (x -> MiniEffP f q r a)
-    MiniEffP f p r a
+    IKleisliTupled (PrEffP f) '(q, x) '(r, a) ->
+    -- (x -> PrEffP f q r a)
+    PrEffP f p r a
   Scope ::
-    ScopedE f (MiniEffP f) p p' q' q x x' ->
-    -- MiniEffP f p' q' x ->
-    IKleisliTupled (MiniEffP f) '(q, x') '(r, a) ->
-    -- (x' -> MiniEffP f q r a) ->
-    MiniEffP f p r a
+    ScopedE f (PrEffP f) p p' q' q x x' ->
+    -- PrEffP f p' q' x ->
+    IKleisliTupled (PrEffP f) '(q, x') '(r, a) ->
+    -- (x' -> PrEffP f q r a) ->
+    PrEffP f p r a
 
-instance Functor (MiniEffP f p q) where
+instance Functor (PrEffP f p q) where
   fmap = Ix.imap
 
-instance P.Applicative (MiniEffP f p p) where
+instance P.Applicative (PrEffP f p p) where
   pure = Ix.pure
 
   f <*> x = f Ix.<*> x
 
-instance P.Monad (MiniEffP f p p) where
+instance P.Monad (PrEffP f p p) where
   a >>= f = a Ix.>>= f
 
-instance IFunctor (MiniEffP f) where
+instance IFunctor (PrEffP f) where
   imap f (Pure a) = Pure $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
-instance IApplicative (MiniEffP f) where
+instance IApplicative (PrEffP f) where
   pure = Pure
   (Pure f) <*> k = P.fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (MiniEffP f) where
-  return :: a -> MiniEffP f i i a
+instance IMonad (PrEffP f) where
+  return :: a -> PrEffP f i i a
   return = Pure
 
-  (>>=) :: MiniEffP f i j a -> (a -> MiniEffP f j k b) -> MiniEffP f i k b
+  (>>=) :: PrEffP f i j a -> (a -> PrEffP f j k b) -> PrEffP f i k b
   (Pure a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
   (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
@@ -170,7 +170,7 @@ data family ScopeE f
 
 type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
 
-runI2 :: MiniEffP IIdentity () () a -> a
+runI2 :: PrEffP IIdentity () () a -> a
 runI2 (Pure a) = a
 runI2 (Impure (IIdentity a) k) = runI2 $ runIKleisliTupled k a
 runI2 (Scope _ _) = error "Impossible"
@@ -281,7 +281,7 @@ getP :: forall i ps qs p effs .
   , AssumeT i ps ~ p
   , WriteT i p ps ~ qs
   ) =>
-  MiniEffP (Op effs) ps qs p
+  PrEffP (Op effs) ps qs p
 getP = Impure (inj n GetP) emptyCont
   where
     n = natVal (Proxy :: Proxy i)
@@ -292,7 +292,7 @@ putP :: forall i ps qs p effs .
   , WriteT i p ps ~ qs
   ) =>
   p ->
-  MiniEffP (Op effs) ps qs ()
+  PrEffP (Op effs) ps qs ()
 putP p = Impure (inj n (PutP p)) emptyCont
   where
     n = natVal (Proxy :: Proxy i)
@@ -305,10 +305,10 @@ data State p q a where
   Put :: x -> State p x ()
   Get :: State p p p
 
-get :: MiniEffP (State :+: r) '(p, ys) '(p, ys) p
+get :: PrEffP (State :+: r) '(p, ys) '(p, ys) p
 get = Impure (PInl Get) (IKleisliTupled $ \x -> Ix.return x)
 
-put :: q -> MiniEffP (State :+: r) '(p, ys) '(q, ys) ()
+put :: q -> PrEffP (State :+: r) '(p, ys) '(q, ys) ()
 put q = Impure (PInl $ Put q) (IKleisliTupled $ \x -> Ix.return x)
 
 data Reader e p q a where
@@ -320,11 +320,11 @@ instance Show (Reader e p q a) where
 data InputC p q a where
   Input :: InputC (x ': q) q x
 
-askL2 :: MiniEffP (a :+: Reader e :+: r) '(p1, '(S x, p2)) '(p1, '(x, p2)) e
+askL2 :: PrEffP (a :+: Reader e :+: r) '(p1, '(S x, p2)) '(p1, '(x, p2)) e
 askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
 
 -- foo ::
---   MiniEffP
+--   PrEffP
 --     (State :+: Reader Int :+: IIdentity)
 --     '(Int, '(S (S Z), ()))
 --     '(String, '(Z, ()))
@@ -338,8 +338,8 @@ askL2 = Impure (PInr (PInl Ask)) (IKleisliTupled $ \x -> Ix.return x)
 
 runStateAI ::
   p ->
-  MiniEffP (State :+: eff) '(p, sr1) '(q, sr2) a ->
-  MiniEffP eff sr1 sr2 (a, q)
+  PrEffP (State :+: eff) '(p, sr1) '(q, sr2) a ->
+  PrEffP eff sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (PInl Get) k) =
   runStateAI p (runIKleisliTupled k p)
@@ -351,8 +351,8 @@ runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
 
 runReaderL ::
   e ->
-  MiniEffP (Reader e :+: eff) '(p, sr1) '(Z, sr2) a ->
-  MiniEffP eff sr1 sr2 a
+  PrEffP (Reader e :+: eff) '(p, sr1) '(Z, sr2) a ->
+  PrEffP eff sr1 sr2 a
 runReaderL _ (Pure x) = Ix.return x
 runReaderL p (Impure (PInl Ask) k) =
   runReaderL p (runIKleisliTupled k p)
@@ -367,8 +367,8 @@ data instance HList (x ': xs) = x `HCons` HList xs
 
 runInputC ::
   HList p ->
-  MiniEffP (InputC :+: eff) '(p, sr1) '( '[], sr2) a ->
-  MiniEffP eff sr1 sr2 a
+  PrEffP (InputC :+: eff) '(p, sr1) '( '[], sr2) a ->
+  PrEffP eff sr1 sr2 a
 runInputC l = \case
   Pure x -> Ix.return x
   Impure (PInl Input) k -> case l of
@@ -378,14 +378,14 @@ runInputC l = \case
     Impure op $ IKleisliTupled $ \x -> runInputC l (runIKleisliTupled k x)
   _ -> error "Don't care for now"
 
-foo ::
-  ( KnownNat i
-  , FindEffT StateP effs ~ i
-  , AssumeT i ps ~ Int
-  , WriteT i String ps ~ qs
-  ) =>
-  MiniEffP (Op effs) ps qs Int
-foo = Ix.do
-  x <- getP
-  putP (show x)
-  Ix.return 5
+-- foo ::
+--   ( KnownNat i
+--   , FindEffT StateP effs ~ i
+--   , AssumeT i ps ~ Int
+--   , WriteT i String ps ~ qs
+--   ) =>
+--   PrEffP (Op effs) ps qs Int
+-- foo = Ix.do
+--   x <- getP
+--   putP (show x)
+--   Ix.return 5

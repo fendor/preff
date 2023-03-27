@@ -36,7 +36,7 @@ library
   exposed-modules:
     Ambig.FreerSimple
     Ambig.FusedEffects
-    Ambig.MiniEff
+    Ambig.PrEff
     Ambig.Mtl
     Ambig.Polysemy
     Ambig.PolysemyPlugin

@@ -39,15 +39,15 @@ library
   exposed-modules:
     Control.IxMonad
     Data.ListP
-    MiniEff
-    MiniEff.Parameterised.Array
-    MiniEff.Parameterised.Protocol
-    MiniEff.Parameterised.State
-    MiniEff.Simple.Examples
-    MiniEff.Simple.Reader
-    MiniEff.Simple.State
-    MiniEff.Simple.Writer
-    PMiniEff
+    PrEff
+    PrEff.Parameterised.Array
+    PrEff.Parameterised.Protocol
+    PrEff.Parameterised.State
+    PrEff.Simple.Examples
+    PrEff.Simple.Reader
+    PrEff.Simple.State
+    PrEff.Simple.Writer
+    PPrEff
     SerialArrays
     Singletons
 

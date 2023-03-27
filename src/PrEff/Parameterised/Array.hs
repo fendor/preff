@@ -1,14 +1,14 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
-module MiniEff.Parameterised.Array where
+module PrEff.Parameterised.Array where
 
 import Control.Concurrent.STM
 import Data.Array.IO as IO
 import GHC.Types (Any)
-import MiniEff.Parameterised.State (Future (..))
+import PrEff.Parameterised.State (Future (..))
 import Unsafe.Coerce (unsafeCoerce)
-import MiniEff
+import PrEff
 import qualified Control.IxMonad as Ix
 import Prelude hiding (Monad (..), read)
 import qualified Prelude as P
@@ -79,7 +79,7 @@ data instance ScopeE Array m p p' q' q x x' where
   -- TODO: sr1 ~ [] is required for the runner
   AFinish :: m p q () -> ScopeE Array m p p q p () ()
 
--- afork :: AcceptableList p r p' => MiniEff f Thread p' q' x -> MiniEff f Thread p r (Future x)
+-- afork :: AcceptableList p r p' => PrEff f Thread p' q' x -> PrEff f Thread p r (Future x)
 afork s = ScopedP (AFork s) emptyCont
 
 afinish s = ScopedP (AFinish s) emptyCont
@@ -119,7 +119,7 @@ unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n ->
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 runArrays ::
-  MiniEff '[IIO] Array p q a ->
+  PrEff '[IIO] Array p q a ->
   IO ()
 runArrays prog = P.do
   _ <- runIO $ runArraysH prog
@@ -127,8 +127,8 @@ runArrays prog = P.do
 
 runArraysH ::
   Member IIO effs =>
-  MiniEff effs Array p q a ->
-  MiniEff effs IVoid () () [TMVar ()]
+  PrEff effs Array p q a ->
+  PrEff effs IVoid () () [TMVar ()]
 runArraysH (Value _a) = Ix.return []
 runArraysH (ImpureP (Malloc i (a :: b)) c) =
   let upper = i - 1

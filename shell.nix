@@ -4,7 +4,7 @@ let
 in
 with nixpkgs;
 stdenv.mkDerivation {
-  name = "minieff";
+  name = "PrEff";
   buildInputs = [
     gmp
     zlib

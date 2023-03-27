@@ -1,4 +1,4 @@
-# Revision history for minieff
+# Revision history for PrEff
 ## 0.1.0.0 -- YYYY-mm-dd
 
 * First version. Released on an unsuspecting world.

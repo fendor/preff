@@ -1,9 +1,9 @@
-module Ambig.MiniEff where
+module Ambig.PrEff where
 
-import MiniEff
-import MiniEff.Simple.State
+import PrEff
+import PrEff.Simple.State
 
-manipState :: Member (State Int) effs => MiniEff effs s p p ()
+manipState :: Member (State Int) effs => PrEff effs s p p ()
 manipState = do
   i <- get
   put i

@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module MiniEff where
+module PrEff where
 
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
@@ -41,7 +41,7 @@ data Op f x where
   OThere :: Op effs x -> Op (eff : effs) x
 
 
-type MiniEff ::
+type PrEff ::
   forall k.
   [Type -> Type] ->
   (k -> k -> Type -> Type) ->
@@ -49,53 +49,53 @@ type MiniEff ::
   k ->
   Type ->
   Type
-data MiniEff effs f p q a where
-  Value :: a -> MiniEff effs f p p a
+data PrEff effs f p q a where
+  Value :: a -> PrEff effs f p p a
   Impure ::
     Op effs x ->
-    IKleisliTupled (MiniEff effs f) '(p, x) '(r, a) ->
-    MiniEff effs f p r a
+    IKleisliTupled (PrEff effs f) '(p, x) '(r, a) ->
+    PrEff effs f p r a
   ImpureP ::
     f p q x ->
-    -- MiniEff f g p' q' x ->
-    IKleisliTupled (MiniEff effs f) '(q, x) '(r, a) ->
-    -- (x' -> MiniEff f g q r a) ->
-    MiniEff effs f p r a
+    -- PrEff f g p' q' x ->
+    IKleisliTupled (PrEff effs f) '(q, x) '(r, a) ->
+    -- (x' -> PrEff f g q r a) ->
+    PrEff effs f p r a
   ScopedP ::
-    ScopedE f (MiniEff effs f) p p' q' q x x' ->
-    -- MiniEff f g p' q' x ->
-    IKleisliTupled (MiniEff effs f) '(q, x') '(r, a) ->
-    -- (x' -> MiniEff f g q r a) ->
-    MiniEff effs f p r a
+    ScopedE f (PrEff effs f) p p' q' q x x' ->
+    -- PrEff f g p' q' x ->
+    IKleisliTupled (PrEff effs f) '(q, x') '(r, a) ->
+    -- (x' -> PrEff f g q r a) ->
+    PrEff effs f p r a
 
-instance Functor (MiniEff effs f p q) where
+instance Functor (PrEff effs f p q) where
   fmap = Ix.imap
 
-instance P.Applicative (MiniEff effs f p p) where
+instance P.Applicative (PrEff effs f p p) where
   pure = Ix.pure
   f <*> x = f Ix.<*> x
 
-instance P.Monad (MiniEff effs f p p) where
+instance P.Monad (PrEff effs f p p) where
   a >>= f = a Ix.>>= f
 
-instance IFunctor (MiniEff effs f) where
+instance IFunctor (PrEff effs f) where
   imap f (Value a) = Value $ f a
   imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (ImpureP op k) = ImpureP op (IKleisliTupled $ imap f . runIKleisliTupled k)
   imap f (ScopedP op k) = ScopedP op (IKleisliTupled $ imap f . runIKleisliTupled k)
 
-instance IApplicative (MiniEff effs f) where
+instance IApplicative (PrEff effs f) where
   pure = Value
   (Value f) <*> k = fmap f k
   (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   (ImpureP fop k') <*> k = ImpureP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
   ScopedP fop k' <*> k = ScopedP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
 
-instance IMonad (MiniEff effs f) where
-  return :: a -> MiniEff effs f i i a
+instance IMonad (PrEff effs f) where
+  return :: a -> PrEff effs f i i a
   return = Value
 
-  (>>=) :: MiniEff effs f i j a -> (a -> MiniEff effs f j k b) -> MiniEff effs f i k b
+  (>>=) :: PrEff effs f i j a -> (a -> PrEff effs f j k b) -> PrEff effs f i k b
   (Value a) >>= f = f a
   (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
   (ImpureP o k) >>= f = ImpureP o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
@@ -172,20 +172,20 @@ weave = mapS
 -- Utility functions
 -- ------------------------------------------------
 
-send :: Member f eff => f a -> MiniEff eff s p p a
+send :: Member f eff => f a -> PrEff eff s p p a
 send f = Impure (inj f) emptyCont
 
-sendP :: s p q a -> MiniEff eff s p q a
+sendP :: s p q a -> PrEff eff s p q a
 sendP f = ImpureP f emptyCont
 
-sendScoped :: ScopeE s (MiniEff eff s) p p' q' q x' x -> MiniEff eff s p q x
+sendScoped :: ScopeE s (PrEff eff s) p p' q' q x' x -> PrEff eff s p q x
 sendScoped g = ScopedP g emptyCont
 
 -- ------------------------------------------------
 -- Algebraic Handlers
 -- ------------------------------------------------
 
-fold :: (forall x. Op f x -> x) -> (a -> b) -> MiniEff f IVoid p q a -> b
+fold :: (forall x. Op f x -> x) -> (a -> b) -> PrEff f IVoid p q a -> b
 fold alg gen (Value a) = gen a
 fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
 fold alg gen _ = undefined
@@ -195,7 +195,7 @@ foldP ::
   AlgScoped s ->
   Alg (Op f) ->
   Gen a b ->
-  MiniEff f s p q a -> b
+  PrEff f s p q a -> b
 foldP algP algScoped alg gen (Value a) =
   gen a
 foldP algP algScoped alg gen (Impure op k) =
@@ -205,7 +205,7 @@ foldP algP algScoped alg gen (ImpureP op k) =
 foldP algP algScoped alg gen (ScopedP op k) =
   foldP algP algScoped alg gen (runIKleisliTupled k (algScoped op))
 
-handle :: Alg f -> Gen a b -> MiniEff (f:eff) IVoid p q a -> MiniEff eff IVoid p q b
+handle :: Alg f -> Gen a b -> PrEff (f:eff) IVoid p q a -> PrEff eff IVoid p q b
 handle alg gen (Value a) = return $ gen a
 handle alg gen (Impure (OHere op) k) = handle alg gen (runIKleisliTupled k (alg op))
 handle alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
@@ -220,17 +220,17 @@ type AlgScoped s = forall x m p p' q' q x' . ScopeE s m p p' q' q x' x -> x
 type Gen a b = a -> b
 
 -- ------------------------------------------------
--- MiniEff Monad and Simple Runners
+-- PrEff Monad and Simple Runners
 -- ------------------------------------------------
 
-run :: MiniEff '[] IVoid p q a -> a
+run :: PrEff '[] IVoid p q a -> a
 run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
 -- Natural transformation
 type (~>) f g = forall x . f x -> g x
 
 
-interpret :: ScopedEffect f => (forall u. eff ~> MiniEff effs f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff effs f p q
+interpret :: ScopedEffect f => (forall u. eff ~> PrEff effs f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs f p q
 interpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -247,7 +247,7 @@ interpret handler = \case
     where
       emptyCtx = ((), ())
 
-reinterpret :: ScopedEffect f => (forall u . eff ~> MiniEff (newEff : effs) f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff (newEff : effs) f p q
+reinterpret :: ScopedEffect f => (forall u . eff ~> PrEff (newEff : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (newEff : effs) f p q
 reinterpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -264,7 +264,7 @@ reinterpret handler = \case
     where
       emptyCtx = ((), ())
 
-reinterpret2 :: ScopedEffect f => (forall u . eff ~> MiniEff (e1 : e2 : effs) f u u) -> MiniEff (eff ': effs) f p q ~> MiniEff (e1 : e2 : effs) f p q
+reinterpret2 :: ScopedEffect f => (forall u . eff ~> PrEff (e1 : e2 : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : effs) f p q
 reinterpret2 handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -321,14 +321,14 @@ data instance ScopeE IVoid m p p' q' q x' x where
 data IIO a where
   RunIO :: IO a -> IIO a
 
-runIO :: MiniEff '[IIO] IVoid p q a -> IO a
+runIO :: PrEff '[IIO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
 runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopedP _ _) = error "Impossible"
 
-embedIO :: Member IIO effs => IO a -> MiniEff effs f p p a
+embedIO :: Member IIO effs => IO a -> PrEff effs f p p a
 embedIO io = Impure (inj $ RunIO io) emptyCont
 
 -- ------------------------------------------------
