@@ -26,6 +26,13 @@ runReader e (ScopedP op k) =
     (weave (e,()) (fmap (e,) . uncurry runReader) op)
     (IKleisliTupled $ \(_, x) -> runReader e $ runIKleisliTupled k x)
 
+runReaderI :: ScopedEffect s =>
+  e ->
+  PrEff (Reader e : effs) s p q a ->
+  PrEff effs s p q a
+runReaderI e = interpret $ \case
+  Ask -> pure e
+
 runReader' ::
   e ->
   PrEff (Reader e : effs) IVoid p q a ->

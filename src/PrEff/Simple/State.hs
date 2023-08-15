@@ -1,5 +1,3 @@
-{-# LANGUAGE QualifiedDo #-}
-
 module PrEff.Simple.State where
 
 import Data.Typeable
@@ -66,15 +64,9 @@ runState :: ScopedEffect f =>
   s ->
   PrEff (State s : effs) f ps qs a ->
   PrEff effs f ps qs (s, a)
-runState s (Value a) = Ix.return (s, a)
-runState s (Impure (OHere Get) k) = runState s (runIKleisliTupled k s)
-runState _s (Impure (OHere (Put s')) k) = runState s' (runIKleisliTupled k ())
-runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
-runState s (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runState s . runIKleisliTupled k)
-runState s (ScopedP op k) =
-  ScopedP
-    (weave (s, ()) (uncurry runState) op)
-    (IKleisliTupled $ \(s', a) -> runState s' $ runIKleisliTupled k a)
+runState initial = interpretStateful initial $ \s -> \case
+  Get -> pure (s, s)
+  Put newS -> pure (newS, ())
 
 execState :: ScopedEffect f => a -> PrEff (State a : effs) f p q b -> PrEff effs f p q a
 execState s = Ix.imap fst . runState s

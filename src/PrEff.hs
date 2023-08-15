@@ -163,7 +163,7 @@ class ScopedEffect f where
 
 weave :: (ScopedEffect f, Functor c) =>
   c () ->
-  (forall r u v. c (m u v r) -> n u v (c r)) ->
+  HandlerS c m n->
   ScopedE f m p p' q' q x x' ->
   ScopedE f n p p' q' q (c x) (c x')
 weave = mapS
@@ -280,6 +280,29 @@ reinterpret2 handler = \case
       (IKleisliTupled $ \(_, x) -> reinterpret2 handler (runIKleisliTupled k x))
     where
       emptyCtx = ((), ())
+
+interpretStateful :: ScopedEffect f =>
+  s ->
+  (forall u v x . s -> eff x -> PrEff effs f v v (s, x)) ->
+  PrEff (eff : effs) f ps qs a ->
+  PrEff effs f ps qs (s, a)
+interpretStateful !s _hdl (Value a) = Ix.return (s, a)
+interpretStateful !s handler (Impure (OHere op) k) = Ix.do
+  (newS, x) <- handler s op
+  interpretStateful newS handler (runIKleisliTupled k x)
+interpretStateful !s hdl (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (interpretStateful s hdl . runIKleisliTupled k)
+interpretStateful !s hdl (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ interpretStateful s hdl . runIKleisliTupled k)
+interpretStateful !s hdl (ScopedP op k) =
+  ScopedP
+    (weave
+      (s, ())
+      (\(s', inner) -> Ix.do
+        (x, newS) <- interpretStateful s' hdl inner
+        pure (x, newS)
+        )
+      op)
+    (IKleisliTupled $ \(s', a) -> interpretStateful s' hdl $ runIKleisliTupled k a)
+
 
 -- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
 -- more summand.
