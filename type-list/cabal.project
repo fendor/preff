@@ -1,0 +1,6 @@
+packages: ./ ./safe-mutation-plugin
+
+package *
+    ghc-options: -haddock
+
+with-compiler: ghc-9.4.4

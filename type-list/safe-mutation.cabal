@@ -1,0 +1,82 @@
+cabal-version:   3.0
+name:            safe-mutation
+version:         0.1.0.0
+license:
+author:          Fendor
+maintainer:      power.walross@gmail.com
+build-type:      Simple
+
+-- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
+extra-doc-files: CHANGELOG.md
+
+common warnings
+  ghc-options: -Wall
+
+common exts
+  default-extensions:
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    InstanceSigs
+    LambdaCase
+    MultiParamTypeClasses
+    PartialTypeSignatures
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneKindSignatures
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    QualifiedDo
+
+library
+  import:           warnings, exts
+  exposed-modules:
+    Arrays
+    Parameterised.Array
+    Parameterised.Protocol
+    Parameterised.State
+    SerialArrays
+    Simple.Examples
+    Simple.State
+    Simple.Reader
+    Singletons
+    Store
+    Utils
+
+  build-depends:
+    , array
+    , base                  >=4.14.3.0
+    , containers
+    , ghc
+    , ghc-prim
+    , random
+    , safe-mutation-plugin
+    , stm
+    , singletons
+    , singletons-base
+    , first-class-families
+
+  -- Directories containing source files.
+  hs-source-dirs:   src
+  -- ghc-options:      -Wno-unticked-promoted-constructors
+  default-language: GHC2021
+
+executable safe-mutation
+  import:           warnings, exts
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , safe-mutation
+    , safe-mutation-plugin
+
+  -- Directories containing source files.
+  hs-source-dirs:   exe
+
+  -- Base language which the package is written in.
+  default-language: GHC2021
