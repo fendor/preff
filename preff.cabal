@@ -68,3 +68,10 @@ library
 
   -- ghc-options:      -Wno-unticked-promoted-constructors
   default-language: GHC2021
+
+test-suite mytests
+  import: exts
+  type: exitcode-stdio-1.0
+  main-is: Test.hs
+  hs-source-dirs: tests
+  build-depends: base, preff

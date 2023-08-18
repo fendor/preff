@@ -341,18 +341,37 @@ absurdS v = error "Absurd"
 
 data instance ScopeE IVoid m p p' q' q x' x where
 
-data IIO a where
-  RunIO :: IO a -> IIO a
-
-runIO :: PrEff '[IIO] IVoid p q a -> IO a
+runIO :: PrEff '[Embed IO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
-runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x -> runIO $ runIKleisliTupled k x
+runIO (Impure (OHere (Embed a)) k) = do
+  x <- a
+  runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopedP _ _) = error "Impossible"
 
-embedIO :: Member IIO effs => IO a -> PrEff effs f p p a
-embedIO io = Impure (inj $ RunIO io) emptyCont
+runEmbed :: (ScopedEffect s, P.Monad m) =>
+  (forall x u v . m x -> PrEff effs s u v x) ->
+  PrEff (Embed m : effs) s p q a ->
+  PrEff effs s p q (m a)
+runEmbed handle (Value a) = P.pure $ P.pure a
+runEmbed handle (Impure (OHere (Embed m)) k) = Ix.do
+  x <- handle m
+  runEmbed handle $ runIKleisliTupled k x
+runEmbed handle (Impure (OThere _) _k) = error "Impossible"
+runEmbed handle (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
+runEmbed handle (ScopedP _ _) = error "Impossible"
+
+
+
+embedIO :: Member (Embed IO) effs => IO a -> PrEff effs f p p a
+embedIO io = embed io
+
+data Embed m a where
+  Embed :: m a -> Embed m a
+
+embed :: Member (Embed m) f => m a -> PrEff f s p p a
+embed act = send (Embed act)
 
 -- ------------------------------------------------
 -- Effect System utilities
@@ -506,6 +525,10 @@ instance
   Member e '[]
   where
   inj = error "The instance of Member e '[] must never be selected"
+
+type family Members fs effs where
+  Members (f ': fs) effs = (Member f effs, Members fs effs)
+  Members '[] effs = ()
 
 -- ------------------------------------------------
 -- Rebindable Syntax and IMonad Utils

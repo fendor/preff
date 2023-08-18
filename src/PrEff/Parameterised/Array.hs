@@ -119,14 +119,14 @@ unsafeUncoverA :: forall k1 k2 k3 (t :: k1) (v :: k2) (n :: k3). AToken t v n ->
 unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 
 runArrays ::
-  PrEff '[IIO] Array p q a ->
+  PrEff '[Embed IO] Array p q a ->
   IO ()
 runArrays prog = P.do
   _ <- runIO $ runArraysH prog
   P.pure ()
 
 runArraysH ::
-  Member IIO effs =>
+  Member (Embed IO) effs =>
   PrEff effs Array p q a ->
   PrEff effs IVoid () () [TMVar ()]
 runArraysH (Value _a) = Ix.return []

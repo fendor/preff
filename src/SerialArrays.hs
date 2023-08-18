@@ -34,7 +34,7 @@ length a = ImpureP (Length a) $ IKleisliTupled Ix.return
 read a b = ImpureP (Read a b) $ IKleisliTupled Ix.return
 
 runSerialArrays ::
-  (Member IIO effs) =>
+  (Member (Embed IO) effs) =>
   PrEff effs Array p q a ->
   PrEff effs IVoid () () a
 runSerialArrays (Value a) = Ix.return a
