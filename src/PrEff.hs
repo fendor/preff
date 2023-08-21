@@ -423,10 +423,10 @@ type family Apply a b
 type Reverse :: forall k a. k a -> a -> a -> a
 type family Reverse a b c
 
-type Map :: forall k a. k a -> [a] -> [a]
-type family Map f a where
-  Map f '[] = '[]
-  Map f (x ': xs) = Apply f x ': Map f xs
+-- type Map :: forall k a. k a -> [a] -> [a]
+-- type family Map f a where
+--   Map f '[] = '[]
+--   Map f (x ': xs) = Apply f x ': Map f xs
 
 type MapReverse :: forall k a. k a -> [a] -> [a] -> [a]
 type family MapReverse f a b where

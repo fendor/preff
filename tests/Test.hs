@@ -1,4 +1,7 @@
 import PrEff
+import PrEff.Simple.State
+import System.FilePath
+import Data.Map
 
 main :: IO ()
 main = pure ()
@@ -12,11 +15,11 @@ data CustomerDb a where
   ReadCustomers :: FilePath -> CustomerDb [Customer]
   WriteCustomers :: FilePath -> [Customer] -> CustomerDb ()
 
-runCustomerServiceIO ::
-  (Member (Embed IO) f, ScopedEffect s) =>
+runCustomerService ::
+  (ScopedEffect s) =>
   PrEff (CustomerService : f) s p q x ->
   PrEff f s p q x
-runCustomerServiceIO = interpret $ \case
+runCustomerService = interpret $ \case
   Process customers ->
     pure $ processData customers
 
@@ -28,6 +31,19 @@ runCustomerDbIO  = interpret $ \case
     embed $ readCustomersIO fp
   WriteCustomers fp customers ->
     embed $ writeCustomersIO fp customers
+
+runCustomerDbViaState ::
+  (Member (State (Map FilePath [Customer])) f, ScopedEffect s) =>
+  PrEff (CustomerDb : f) s p q x ->
+  PrEff f s p q x
+runCustomerDbViaState  = interpret $ \case
+  ReadCustomers fp -> do
+    customerMap <- get
+    pure (customerMap ! fp)
+  WriteCustomers fp customers -> do
+    customerMap <- get
+    put (insert fp customers customerMap)
+    pure ()
 
 processData :: [Customer] -> [Customer]
 processData = undefined

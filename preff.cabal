@@ -74,4 +74,4 @@ test-suite mytests
   type: exitcode-stdio-1.0
   main-is: Test.hs
   hs-source-dirs: tests
-  build-depends: base, preff
+  build-depends: base, preff, containers, filepath, directory
