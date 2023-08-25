@@ -86,20 +86,20 @@ data StateAG m p p' q' q x x' where
   LocalAG :: (p -> p') ->
     m (p': sr1) (q: sr2) x -> StateAG m (p: sr1) (p': sr1) (q': sr2) (p: sr2) x x
 
-runStateAIG ::
+runStateDirect ::
   p ->
   IProg (StateA:eff) StateAG (p: sr1) (q: sr2) a ->
   IProg eff IVoid sr1 sr2 (a, q)
-runStateAIG p (Pure x) = Ix.return (x, p)
-runStateAIG p (Impure (OHere GetA) k) =
-  runStateAIG p (runIKleisliTupled k p)
-runStateAIG _ (Impure (OHere (PutA q)) k) =
-  runStateAIG q (runIKleisliTupled k ())
-runStateAIG p (Impure (OThere op) k) =
-  Impure op $ IKleisliTupled $ \x -> runStateAIG p (runIKleisliTupled k x)
-runStateAIG p (Scope (LocalAG f m) k) = Ix.do
-  (x, _q) <- runStateAIG (f p) m
-  runStateAIG p (runIKleisliTupled k x)
+runStateDirect p (Pure x) = Ix.return (x, p)
+runStateDirect p (Impure (OHere GetA) k) =
+  runStateDirect p (runIKleisliTupled k p)
+runStateDirect _ (Impure (OHere (PutA q)) k) =
+  runStateDirect q (runIKleisliTupled k ())
+runStateDirect p (Impure (OThere op) k) =
+  Impure op $ IKleisliTupled $ \x -> runStateDirect p (runIKleisliTupled k x)
+runStateDirect p (Scope (LocalAG f m) k) = Ix.do
+  (x, _q) <- runStateDirect (f p) m
+  runStateDirect p (runIKleisliTupled k x)
 
 runStateAI ::
   p ->

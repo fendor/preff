@@ -125,15 +125,8 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
--- | Apply a simple handler function to a continuation.
-hdl :: (IMonad m, IMonad n) =>
-  (m p1 q1 b -> n p2 q2 c) ->
-  IKleisliTupled m '(p1, a) '(q1, b) ->
-  IKleisliTupled n '(p2, a) '(q2, c)
-hdl f k = IKleisliTupled (f . runIKleisliTupled k)
-
 emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
-emptyCont = IKleisliTupled Ix.return
+emptyCont = IKleisliTupled Ix.pure
 
 transformKleisli ::
   (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2)) ->
@@ -205,14 +198,12 @@ foldP algP algScoped alg gen (ImpureP op k) =
 foldP algP algScoped alg gen (ScopedP op k) =
   foldP algP algScoped alg gen (runIKleisliTupled k (algScoped op))
 
-handle :: Alg f -> Gen a b -> PrEff (f:eff) IVoid p q a -> PrEff eff IVoid p q b
-handle alg gen (Value a) = return $ gen a
-handle alg gen (Impure (OHere op) k) = handle alg gen (runIKleisliTupled k (alg op))
-handle alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handle alg gen $ runIKleisliTupled k x)
-handle alg gen (ImpureP op k) = error "Impossible"
-handle alg gen (ScopedP op k) = error "Impossible"
-
--- fuse :: Alg f -> Alg g -> Alg (f :+: g)
+handleEff :: Alg f -> Gen a b -> PrEff (f:eff) IVoid p q a -> PrEff eff IVoid p q b
+handleEff alg gen (Value a) = pure $ gen a
+handleEff alg gen (Impure (OHere op) k) = handleEff alg gen (runIKleisliTupled k (alg op))
+handleEff alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handleEff alg gen $ runIKleisliTupled k x)
+handleEff alg gen (ImpureP op k) = error "Impossible"
+handleEff alg gen (ScopedP op k) = error "Impossible"
 
 type Alg f = forall x . f x -> x
 type AlgP f = forall x p q . f p q x -> x
@@ -283,7 +274,7 @@ reinterpret2 handler = \case
 
 interpretStateful :: ScopedEffect f =>
   s ->
-  (forall u v x . s -> eff x -> PrEff effs f v v (s, x)) ->
+  (forall v x . s -> eff x -> PrEff effs f v v (s, x)) ->
   PrEff (eff : effs) f ps qs a ->
   PrEff effs f ps qs (s, a)
 interpretStateful !s _hdl (Value a) = Ix.return (s, a)
@@ -302,6 +293,52 @@ interpretStateful !s hdl (ScopedP op k) =
         )
       op)
     (IKleisliTupled $ \(s', a) -> interpretStateful s' hdl $ runIKleisliTupled k a)
+
+interpretScoped ::
+  (forall u v x. s u v x -> x) ->
+  -- (ScopedE )
+  PrEff f s p q a ->
+  PrEff f IVoid () () a
+interpretScoped hdl (Value a) = pure a
+interpretScoped hdl (Impure op k) = Impure op $
+  IKleisliTupled $ \x -> interpretScoped hdl (runIKleisliTupled k x)
+interpretScoped hdl (ImpureP cmd k) = Ix.do
+  let a = hdl cmd
+  interpretScoped hdl $ runIKleisliTupled k a
+interpretScoped hdl (ScopedP _ _) = error "Impossible for now"
+
+interpretStatefulScoped ::
+  (forall p' q' x. p' -> s p' q' x -> (q', x)) ->
+  p ->
+  PrEff eff s p q a ->
+  PrEff eff IVoid () () (a, q)
+interpretStatefulScoped alg p (Value x) = Ix.return (x, p)
+interpretStatefulScoped alg p (Impure cmd k) =
+  Impure cmd $
+    IKleisliTupled $ \x -> interpretStatefulScoped alg p $ runIKleisliTupled k x
+interpretStatefulScoped alg p (ImpureP op k) = do
+  let (q, a) = alg p op
+  interpretStatefulScoped alg q (runIKleisliTupled k a)
+interpretStatefulScoped alg p (ScopedP _ k) = Ix.do
+  error "Impossible for now"
+
+
+
+-- runStateDirect ::
+--   p ->
+--   PrEff eff StateP p q a ->
+--   PrEff eff IVoid () () (a, q)
+-- runStateDirect p (Value x) = Ix.return (x, p)
+-- runStateDirect p (Impure cmd k) =
+--   Impure cmd $
+--     IKleisliTupled $ \x -> runStateDirect p $ runIKleisliTupled k x
+-- runStateDirect p (ImpureP GetP k) =
+--   runStateDirect p (runIKleisliTupled k p)
+-- runStateDirect _ (ImpureP (PutP q) k) =
+--   runStateDirect q (runIKleisliTupled k ())
+-- runStateDirect p (ScopedP (ModifyP f m) k) = Ix.do
+--   (x, _q) <- runStateDirect (f p) m
+--   runStateDirect p (runIKleisliTupled k x)
 
 
 -- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one

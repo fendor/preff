@@ -1,6 +1,5 @@
 module Control.IxMonad where
 
-import qualified Prelude as P
 import Prelude hiding (Monad(..), Applicative(..), Functor(..), mapM)
 import Data.Kind
 

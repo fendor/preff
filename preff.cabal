@@ -41,7 +41,9 @@ library
     Data.ListP
     PrEff
     PrEff.Parameterised.Array
+    PrEff.Parameterised.NonDet
     PrEff.Parameterised.Protocol
+    PrEff.Parameterised.Reader
     PrEff.Parameterised.State
     PrEff.Simple.Examples
     PrEff.Simple.Reader
@@ -62,16 +64,18 @@ library
     , singletons
     , singletons-base
     , stm
+    , text
 
   -- Directories containing source files.
-  hs-source-dirs:   src
+  hs-source-dirs:
+    src
 
   -- ghc-options:      -Wno-unticked-promoted-constructors
   default-language: GHC2021
 
 test-suite mytests
-  import: exts
+  import: exts, warnings
   type: exitcode-stdio-1.0
   main-is: Test.hs
   hs-source-dirs: tests
-  build-depends: base, preff, containers, filepath, directory
+  build-depends: base, preff, containers, filepath, directory, text

@@ -60,10 +60,10 @@ modify f = Ix.do
   s <- get
   put (f s)
 
-runState :: ScopedEffect f =>
-  s ->
-  PrEff (State s : effs) f ps qs a ->
-  PrEff effs f ps qs (s, a)
+runState :: ScopedEffect s =>
+  e ->
+  PrEff (State e : f) s ps qs a ->
+  PrEff f s ps qs (e, a)
 runState initial = interpretStateful initial $ \s -> \case
   Get -> pure (s, s)
   Put newS -> pure (newS, ())

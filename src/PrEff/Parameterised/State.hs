@@ -5,9 +5,10 @@
 module PrEff.Parameterised.State where
 
 import Data.Kind
-import PrEff
+import PrEff hiding (interpretStatefulScoped)
 import qualified Control.IxMonad as Ix
 import Prelude hiding (Monad (..))
+import qualified Data.Text as T
 
 data StateF p q x where
   Alloc :: t -> StateF p (Append p X) (Token t (Length p))
@@ -44,6 +45,13 @@ data StateP p q a where
   PutP :: x -> StateP p x ()
   GetP :: StateP p p p
 
+data instance ScopeE StateP m p p' q' q x x' where
+  ModifyP ::
+    (p -> p') ->
+    (q' -> q) ->
+    m p' q' x ->
+    ScopeE StateP m p p' q' q x x
+
 putAI ::
   p ->
   PrEff effs StateP q p ()
@@ -55,46 +63,79 @@ getAI = ImpureP (GetP) emptyCont
 
 stateChangeExp ::
   PrEff effs StateP String Int String
--- stateChangeExp :: PrEff '[StateA] StateAG '[String] '[Int] String
 stateChangeExp = Ix.do
   s <- getAI
   -- putAI ("Test" :: String)
   putAI (5 :: Int)
   -- putAI (3 :: Int)
-  x <- modifyP' (+ (1 :: Int)) $ getAI
-  Ix.return $ s ++ show x
+  x <- modify (+ (1 :: Int)) $ getAI
+  pure $ s ++ show x
 
-runStateChangeExp = run $ runStateAIG "Test" stateChangeExp
+runStateChangeExp :: (String, Int)
+runStateChangeExp = run $ runStateDirect stateAlg "Test" stateChangeExp
 
-modifyP' ::
+-- >>> runStateChangeExp
+-- ("Test6",6)
+
+modify' ::
+  (p -> p') ->
+  (q' -> q) ->
+  PrEff effs StateP p' q' a ->
+  PrEff effs StateP p q a
+modify' f restore act = ScopedP (ModifyP f restore act) emptyCont
+
+modify ::
   (p -> p') ->
   PrEff effs StateP p' q' a ->
-  PrEff effs StateP p p a
-modifyP' f act = ScopedP (ModifyP f act) emptyCont
-
-data instance ScopeE StateP m p p' q' q x x' where
-  ModifyP ::
-    (p -> p') ->
-    m p' q' x ->
-    ScopeE StateP m p p' q' p x x
+  PrEff effs StateP p q' a
+modify f act = ScopedP (ModifyP f id act) emptyCont
 
 instance ScopedEffect StateP where
-  mapS ctx transform (ModifyP f op) =
-    ModifyP f (transform $ op <$ ctx)
+  mapS ctx transform (ModifyP f restore op) =
+    ModifyP f restore (transform $ op <$ ctx)
 
-runStateAIG ::
+stateAlg :: p -> StateP p q a -> (q, a)
+stateAlg k = \case
+  GetP -> (k, k)
+  PutP q -> (q, ())
+
+runState ::
   p ->
   PrEff eff StateP p q a ->
   PrEff eff IVoid () () (a, q)
-runStateAIG p (Value x) = Ix.return (x, p)
-runStateAIG p (Impure cmd k) =
+runState = interpretStatefulScoped stateAlg
+
+runStateDirect ::
+  (forall p' q' x. p' -> StateP p' q' x -> (q', x)) ->
+  p ->
+  PrEff eff StateP p q a ->
+  PrEff eff IVoid () () (a, q)
+runStateDirect alg p (Value x) = Ix.return (x, p)
+runStateDirect alg p (Impure cmd k) =
   Impure cmd $
-    IKleisliTupled $ \x -> runStateAIG p $ runIKleisliTupled k x
-runStateAIG p (ImpureP GetP k) =
-  runStateAIG p (runIKleisliTupled k p)
-runStateAIG _ (ImpureP (PutP q) k) =
-  runStateAIG q (runIKleisliTupled k ())
-runStateAIG p (ScopedP (ModifyP f m) k) = Ix.do
-  (x, _q) <- runStateAIG (f p) m
-  runStateAIG p (runIKleisliTupled k x)
+    IKleisliTupled $ \x -> runStateDirect alg p $ runIKleisliTupled k x
+runStateDirect alg p (ImpureP op k) = do
+  let (q, a) = stateAlg p op
+  runStateDirect alg q (runIKleisliTupled k a)
+-- runStateDirect _ (ImpureP (PutP q) k) =
+--   runStateDirect q (runIKleisliTupled k ())
+runStateDirect alg p (ScopedP (ModifyP f restore m) k) = Ix.do
+  (x, q) <- runStateDirect alg (f p) m
+  runStateDirect alg (restore q) (runIKleisliTupled k x)
+
+interpretStatefulScoped ::
+  (forall p' q' x. p' -> StateP p' q' x -> (q', x)) ->
+  p ->
+  PrEff eff StateP p q a ->
+  PrEff eff IVoid () () (a, q)
+interpretStatefulScoped baseAlg p (Value x) = Ix.return (x, p)
+interpretStatefulScoped baseAlg p (Impure cmd k) =
+  Impure cmd $
+    IKleisliTupled $ \x -> interpretStatefulScoped baseAlg p $ runIKleisliTupled k x
+interpretStatefulScoped baseAlg p (ImpureP op k) = do
+  let (q, a) = stateAlg p op
+  interpretStatefulScoped baseAlg q (runIKleisliTupled k a)
+interpretStatefulScoped baseAlg p (ScopedP (ModifyP f restore m) k) = Ix.do
+  (x, q) <- interpretStatefulScoped baseAlg (f p) m
+  interpretStatefulScoped baseAlg (restore q) (runIKleisliTupled k x)
 

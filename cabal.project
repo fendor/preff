@@ -1,6 +1,3 @@
 packages: ./ ./ambiguity-effects
 
-package *
-    ghc-options: -haddock
-
 with-compiler: ghc-9.4.5
