@@ -1,1 +1,0 @@
-module Ambig.FusedEffects where

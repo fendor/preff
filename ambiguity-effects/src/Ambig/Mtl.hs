@@ -1,2 +1,0 @@
-module Ambig.Mtl where
-
