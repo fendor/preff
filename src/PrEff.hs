@@ -107,17 +107,19 @@ type family Fst x where
 type family Snd x where
   Snd '(a, b) = b
 
-{- | Wrapper type that can carry additional type state.
-
- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
-   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
-             (b :: k3).
-      a -> m p q b
-
- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
- runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
--}
+-- | Wrapper type that can carry additional type state.
+--
+-- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+-- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+--   :: forall {k1} {k2} {k3} {p :: k1} {a} {m :: k1 -> k2 -> k3 -> *}
+--             {q :: k2} {b :: k3}.
+--      a -> m p q b
+--
+-- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+-- runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+--   :: forall {k2} {p :: k2} {a} {f :: [* -> *]}
+--             {s :: k2 -> k2 -> * -> *} {q :: k2} {b}.
+--      a -> PrEff f s p q b
 newtype IKleisliTupled m ia ob = IKleisliTupled
   { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
