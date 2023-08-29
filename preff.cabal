@@ -39,6 +39,7 @@ library
   exposed-modules:
     Control.IxMonad
     Data.ListP
+    PPrEff
     PrEff
     PrEff.Parameterised.Array
     PrEff.Parameterised.NonDet
@@ -49,7 +50,6 @@ library
     PrEff.Simple.Reader
     PrEff.Simple.State
     PrEff.Simple.Writer
-    PPrEff
     SerialArrays
     Singletons
 
@@ -66,16 +66,19 @@ library
     , stm
     , text
 
-  -- Directories containing source files.
-  hs-source-dirs:
-    src
-
-  -- ghc-options:      -Wno-unticked-promoted-constructors
+  hs-source-dirs:   src
   default-language: GHC2021
 
-test-suite mytests
-  import: exts, warnings
-  type: exitcode-stdio-1.0
-  main-is: Test.hs
-  hs-source-dirs: tests
-  build-depends: base, preff, containers, filepath, directory, text
+library examples
+  import:           exts
+  exposed-modules:  CustomerEx
+  hs-source-dirs:   examples
+  build-depends:
+    , base
+    , containers
+    , directory
+    , filepath
+    , preff
+    , text
+
+  default-language: GHC2021

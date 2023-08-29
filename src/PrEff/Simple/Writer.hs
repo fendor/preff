@@ -16,6 +16,14 @@ runWriter :: forall w a effs s p q .
 runWriter = interpretStateful mempty $ \s -> \case
   Tell w -> pure (s <> w, ())
 
+runWriterToIO ::
+  (ScopedEffect s, Member (Embed IO) effs, Show w, Monoid w) =>
+  PrEff (Writer w : effs) s p q a ->
+  PrEff effs s p q a
+runWriterToIO = interpret $ \case
+  Tell w -> do
+    embed $ print w
+
 writerExample :: Member (Writer [Int]) f => PrEff f s p p ()
 writerExample = do
   tell @[Int] [1]

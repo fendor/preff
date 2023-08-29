@@ -55,7 +55,7 @@ data instance ScopeE StateP m p p' q' q x x' where
 putAI ::
   p ->
   PrEff effs StateP q p ()
-putAI p = ImpureP (PutP p) emptyCont
+putAI p = sendP (PutP p)
 
 getAI ::
   PrEff effs StateP p p p
@@ -117,8 +117,6 @@ runStateDirect alg p (Impure cmd k) =
 runStateDirect alg p (ImpureP op k) = do
   let (q, a) = stateAlg p op
   runStateDirect alg q (runIKleisliTupled k a)
--- runStateDirect _ (ImpureP (PutP q) k) =
---   runStateDirect q (runIKleisliTupled k ())
 runStateDirect alg p (ScopedP (ModifyP f restore m) k) = Ix.do
   (x, q) <- runStateDirect alg (f p) m
   runStateDirect alg (restore q) (runIKleisliTupled k x)

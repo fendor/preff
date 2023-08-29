@@ -1,7 +1,9 @@
 {-# LANGUAGE EmptyDataDecls #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
-import Control.IxMonad
+module CustomerEx where
+
+import qualified Control.IxMonad as Ix
 import PrEff
 import PrEff.Simple.State
 import System.FilePath
@@ -10,9 +12,11 @@ import qualified Data.Text as T
 import Data.Proxy
 import GHC.TypeLits
 import System.Directory (doesFileExist)
+import qualified Data.Map as Map
+import PrEff.Simple.Writer
 
 main :: IO ()
-main = pure ()
+main = putStrLn "Hello, World!"
 
 type Customer = ()
 
@@ -132,25 +136,60 @@ runCustomerStoreIO = \case
         _a <- runCustomerStoreIO m
         runCustomerStoreIO $ runIKleisliTupled k ()
 
+runCustomerStoreViaState ::
+  Member (State (Map FilePath [Customer])) f =>
+  PrEff f CustomerStore p q a ->
+  PrEff f IVoid () () a
+runCustomerStoreViaState = \case
+  Value a -> pure a
+  Impure op k ->
+    Impure op $
+      IKleisliTupled $ \x -> runCustomerStoreViaState $ runIKleisliTupled k x
+  ImpureP op k ->
+    case op of
+      ReadStore (p :: proxy inp) -> Ix.do
+        let fp = symbolVal p
+        s <- get
+        let cs = s ! fp
+        runCustomerStoreViaState $ runIKleisliTupled k cs
+      WriteStore (p :: proxy out) cs -> Ix.do
+        let fp = symbolVal p
+        s <- get
+        r <- put (insert fp cs s)
+        runCustomerStoreViaState $ runIKleisliTupled k r
+  ScopedP (WithStore p m) k -> Ix.do
+    let fp = symbolVal p
+    s <- get @(Map FilePath [Customer])
+    case Map.lookup fp s of
+      Nothing ->
+        runCustomerStoreViaState $ runIKleisliTupled k ()
+      Just _ -> Ix.do
+        _a <- runCustomerStoreViaState m
+        runCustomerStoreViaState $ runIKleisliTupled k ()
+
 processCustomers' ::
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
+  proxy inp ->
   proxy out ->
   PrEff f CustomerStore (Store inp) (Store out) ()
-processCustomers' out = Ix.do
-  customers <- readStore (Proxy :: Proxy inp)
+processCustomers' inp out = Ix.do
+  customers <- readStore inp
   newCustomers <- process customers
   writeStore out newCustomers
 
 scopedProcessCustomers ::
-  Members [Embed IO, CustomerService] f =>
+  Members [Writer [String], CustomerService] f =>
   PrEff f CustomerStore Empty Empty ()
 scopedProcessCustomers = Ix.do
-  embed $ putStrLn "Hello, World!"
+  tell ["Hello, World!"]
   withStore (Proxy @"input.txt") $ Ix.do
-    embed $ putStrLn "Start the processing!"
-    processCustomers' (Proxy @"output.txt")
-  embed $ putStrLn "Stop execution"
+    tell ["Start the processing!"]
+    processCustomers' (Proxy @"input.txt") (Proxy @"output.txt")
+  tell ["Stop execution"]
 
 
 -- >>> :t runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers
 -- runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers :: IO ()
+
+-- >>> run . runWriter @[String] . runState (Map.fromList [("input.txt", [()])]) . runCustomerService $ runCustomerStoreViaState scopedProcessCustomers
+-- (["Hello, World!","Start the processing!","Stop execution"],(fromList [("input.txt",[()]),("output.txt",[()])],()))

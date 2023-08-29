@@ -10,12 +10,12 @@ data ReaderP p q a where
 data instance ScopeE ReaderP m p p' q' q x' x where
   Local :: (p -> p') -> m p' p' x -> ScopeE ReaderP m p p' p' p x x
 
-runReaderP :: forall f p x .
-  p ->
-  PrEff f ReaderP p p x ->
-  PrEff f IVoid () () x
-runReaderP p act =
-  fst <$> interpretStatefulScoped readerBaseAlg' p act
+-- runReaderP :: forall f p x .
+--   p ->
+--   PrEff f ReaderP p p x ->
+--   PrEff f IVoid () () x
+-- runReaderP p act =
+--   fst <$> interpretStatefulScoped readerBaseAlg' p act
 
 readerBaseAlg :: r -> ReaderP r v a -> a
 readerBaseAlg r Ask = r
@@ -47,21 +47,34 @@ data ScopedAlg s = ScopedAlg
 --         runner (f r) m
 --   }
 
+type Interpreter i o f s p q a =
+  i ->
+  PrEff f s p q a ->
+  PrEff f IVoid () () (a, o)
 
+type ScopedAlgebra i o m f s p q a =
+  Interpreter i o f s p q a ->
+  (forall p' q' x' x. ScopeE s m p p' q' q x' x -> PrEff f IVoid () () (a, q))
+
+-- scopedReaderAlgebra :: p -> ScopedAlgebra p q m f ReaderP p q a
+-- scopedReaderAlgebra p interpreter = \case
+--   Local f m -> do
+--     interpreter (f p) m
 
 interpretStatefulScoped ::
-  (forall p' q' x. p' -> ReaderP p' q' x -> (q', x)) ->
+  (forall p' q' x. p' -> ReaderP p' q' x -> PrEff eff IVoid () () (q', x)) ->
+  () ->
   p ->
   PrEff eff ReaderP p q a ->
   PrEff eff IVoid () () (a, q)
-interpretStatefulScoped alg p (Value x) = Ix.return (x, p)
-interpretStatefulScoped alg p (Impure cmd k) =
+interpretStatefulScoped alg salg p (Value x) = Ix.return (x, p)
+interpretStatefulScoped alg salg  p (Impure cmd k) =
   Impure cmd $
-    IKleisliTupled $ \x -> interpretStatefulScoped alg p $ runIKleisliTupled k x
-interpretStatefulScoped alg p (ImpureP op k) = do
-  let (q, a) = alg p op
-  interpretStatefulScoped alg q (runIKleisliTupled k a)
-interpretStatefulScoped alg p (ScopedP (Local f m) k) = Ix.do
-  (x, _q) <- interpretStatefulScoped alg (f p) m
-  interpretStatefulScoped alg p (runIKleisliTupled k x)
+    IKleisliTupled $ \x -> interpretStatefulScoped alg salg  p $ runIKleisliTupled k x
+interpretStatefulScoped alg salg  p (ImpureP op k) = do
+  (q, a) <- alg p op
+  interpretStatefulScoped alg salg  q (runIKleisliTupled k a)
+interpretStatefulScoped alg salg  p (ScopedP (Local f m) k) = Ix.do
+  (x, _q) <- interpretStatefulScoped alg salg (f p) m
+  interpretStatefulScoped alg salg  p (runIKleisliTupled k x)
 
