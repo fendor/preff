@@ -4,3 +4,8 @@ out
 dist-newstyle/
 .envrc
 .direnv/
+.hls
+input.txt
+output.txt 
+cabal.project.local
+.vscode/
