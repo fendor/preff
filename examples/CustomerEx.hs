@@ -30,6 +30,12 @@ data CustomerDb a where
   ReadCustomers :: FilePath -> CustomerDb [Customer]
   WriteCustomers :: FilePath -> [Customer] -> CustomerDb ()
 
+readCustomers :: Member CustomerDb f => FilePath -> PrEff f s p p [Customer]
+readCustomers fp = send (ReadCustomers fp)
+
+writeCustomers :: Member CustomerDb f => FilePath -> [Customer] -> PrEff f s p p ()
+writeCustomers fp cs = send (WriteCustomers fp cs)
+
 data Open
 data Closed
 
@@ -167,6 +173,16 @@ runCustomerStoreViaState = \case
         _a <- runCustomerStoreViaState m
         runCustomerStoreViaState $ runIKleisliTupled k ()
 
+processCustomers ::
+  (Members '[CustomerService, CustomerDb] f) =>
+  FilePath ->
+  FilePath ->
+  PrEff f s p p ()
+processCustomers inp out = do
+  customers <- readCustomers inp
+  newCustomers <- process customers
+  writeCustomers out newCustomers
+
 processCustomers' ::
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
   proxy inp ->
@@ -190,6 +206,7 @@ scopedProcessCustomers = Ix.do
 
 -- >>> :t runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers
 -- runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers :: IO ()
-
+--
 -- >>> run . runWriter @[String] . runState (Map.fromList [("input.txt", [()])]) . runCustomerService $ runCustomerStoreViaState scopedProcessCustomers
 -- (["Hello, World!","Start the processing!","Stop execution"],(fromList [("input.txt",[()]),("output.txt",[()])],()))
+--
