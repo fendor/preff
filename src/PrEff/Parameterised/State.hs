@@ -4,11 +4,11 @@
 
 module PrEff.Parameterised.State where
 
-import Data.Kind
-import PrEff hiding (interpretStatefulScoped)
 import qualified Control.IxMonad as Ix
+import Data.Kind
+import PrEff (interpretStatefulScoped)
+import PrEff hiding (interpretStatefulScoped)
 import Prelude hiding (Monad (..))
-import qualified Data.Text as T
 
 data StateF p q x where
   Alloc :: t -> StateF p (Append p X) (Token t (Length p))
@@ -46,7 +46,7 @@ data StateP p q a where
   GetP :: StateP p p p
 
 data instance ScopeE StateP m p p' q' q x x' where
-  ModifyP ::
+  Zoom ::
     (p -> p') ->
     (q' -> q) ->
     m p' q' x ->
@@ -72,38 +72,32 @@ stateChangeExp = Ix.do
   pure $ s ++ show x
 
 runStateChangeExp :: (String, Int)
-runStateChangeExp = run $ runStateDirect stateAlg "Test" stateChangeExp
+runStateChangeExp = run $ runStateP "Test Now" stateChangeExp
 
 -- >>> runStateChangeExp
--- ("Test6",6)
+-- ("Test Now6",6)
 
-modify' ::
+zoom ::
   (p -> p') ->
   (q' -> q) ->
   PrEff effs StateP p' q' a ->
   PrEff effs StateP p q a
-modify' f restore act = ScopedP (ModifyP f restore act) emptyCont
+zoom f restore act = ScopedP (Zoom f restore act) emptyCont
 
 modify ::
   (p -> p') ->
   PrEff effs StateP p' q' a ->
   PrEff effs StateP p q' a
-modify f act = ScopedP (ModifyP f id act) emptyCont
+modify f act = ScopedP (Zoom f id act) emptyCont
 
 instance ScopedEffect StateP where
-  mapS ctx transform (ModifyP f restore op) =
-    ModifyP f restore (transform $ op <$ ctx)
+  mapS ctx transform (Zoom f restore op) =
+    Zoom f restore (transform $ op <$ ctx)
 
 stateAlg :: p -> StateP p q a -> (q, a)
 stateAlg k = \case
   GetP -> (k, k)
   PutP q -> (q, ())
-
-runState ::
-  p ->
-  PrEff eff StateP p q a ->
-  PrEff eff IVoid () () (a, q)
-runState = interpretStatefulScoped stateAlg
 
 runStateDirect ::
   (forall p' q' x. p' -> StateP p' q' x -> (q', x)) ->
@@ -112,28 +106,30 @@ runStateDirect ::
   PrEff eff IVoid () () (a, q)
 runStateDirect alg p (Value x) = Ix.return (x, p)
 runStateDirect alg p (Impure cmd k) =
-  Impure cmd $
-    IKleisliTupled $ \x -> runStateDirect alg p $ runIKleisliTupled k x
+  Impure cmd
+    $ IKleisliTupled
+    $ \x -> runStateDirect alg p $ runIKleisliTupled k x
 runStateDirect alg p (ImpureP op k) = do
   let (q, a) = stateAlg p op
   runStateDirect alg q (runIKleisliTupled k a)
-runStateDirect alg p (ScopedP (ModifyP f restore m) k) = Ix.do
+runStateDirect alg p (ScopedP (Zoom f restore m) k) = Ix.do
   (x, q) <- runStateDirect alg (f p) m
   runStateDirect alg (restore q) (runIKleisliTupled k x)
 
-interpretStatefulScoped ::
-  (forall p' q' x. p' -> StateP p' q' x -> (q', x)) ->
+runStateP ::
   p ->
-  PrEff eff StateP p q a ->
-  PrEff eff IVoid () () (a, q)
-interpretStatefulScoped baseAlg p (Value x) = Ix.return (x, p)
-interpretStatefulScoped baseAlg p (Impure cmd k) =
-  Impure cmd $
-    IKleisliTupled $ \x -> interpretStatefulScoped baseAlg p $ runIKleisliTupled k x
-interpretStatefulScoped baseAlg p (ImpureP op k) = do
-  let (q, a) = stateAlg p op
-  interpretStatefulScoped baseAlg q (runIKleisliTupled k a)
-interpretStatefulScoped baseAlg p (ScopedP (ModifyP f restore m) k) = Ix.do
-  (x, q) <- interpretStatefulScoped baseAlg (f p) m
-  interpretStatefulScoped baseAlg (restore q) (runIKleisliTupled k x)
+  PrEff f StateP p q a ->
+  PrEff f IVoid () () (a, q)
+runStateP =
+  interpretStatefulScoped
+    ( \s -> \case
+        PutP s' -> pure (s', ())
+        GetP -> pure (s, s)
+    )
+    ( \k runner s -> \case
+        Zoom f restore m -> Ix.do
+          (x, q) <- runner (f s) m
+          runner (restore q) $ runIKleisliTupled k x
+    )
 
+-- >>>

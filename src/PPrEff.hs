@@ -1,16 +1,15 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module PPrEff where
 
 import Control.IxMonad as Ix
 import Data.Kind (Type)
+import Data.Proxy
 import GHC.TypeLits
 import Unsafe.Coerce
 import Prelude hiding (Applicative (..), Monad (..))
-import Prelude qualified as P
-import qualified Fcf
-import Data.Proxy
+import qualified Prelude as P
 
 data PrEffP f p q a where
   Pure :: a -> PrEffP f p p a
@@ -77,10 +76,10 @@ newtype IKleisliTupled m ia ob = IKleisliTupled
   { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
 
-(|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
+(|>) :: (IMonad m) => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
-emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
+emptyCont :: (IMonad m) => IKleisliTupled m '(p, x) '(p, x)
 emptyCont = IKleisliTupled Ix.return
 
 transformKleisli ::
@@ -91,7 +90,8 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 
 -- Less general instance, note the entries sl and sr in the type level list
 
-type Op :: forall s k t .
+type Op ::
+  forall s k t.
   (s -> s -> Type -> Type, k) ->
   (s, t) ->
   (s, t) ->
@@ -105,7 +105,7 @@ data Op effs ps qs x where
     Op effs sr1 sr2 x ->
     Op '(eff, effs) '(sl, sr1) '(sl, sr2) x
 
-instance Show (f p q x) => Show (Op '(f, IIdentity) '(p, ()) '(q, ()) x) where
+instance (Show (f p q x)) => Show (Op '(f, IIdentity) '(p, ()) '(q, ()) x) where
   show (OHere f) = "OHere " <> show f
 
 instance (Show (f p q x), Show (Op g ps qs x)) => Show (Op '(f, g) '(p, ps) '(q, qs) x) where
@@ -182,7 +182,7 @@ runI2 (Scope _ _) = error "Impossible"
 data IIdentity p q a where
   IIdentity :: a -> IIdentity p p a
 
-deriving instance Show a => Show (IIdentity p q a)
+deriving instance (Show a) => Show (IIdentity p q a)
 
 runIdentity :: IIdentity p q a -> a
 runIdentity (IIdentity a) = a
@@ -196,7 +196,8 @@ type family FindEff e effs :: Natural where
   FindEff e (e ': eff) = 0
   FindEff e (f ': eff) = 1 + FindEff e eff
 
-type FindEffT :: forall k t .
+type FindEffT ::
+  forall k t.
   k ->
   (k, t) ->
   Nat
@@ -211,8 +212,8 @@ type family Write ind p ps where
   Write 0 p (_ : xs) = p : xs
   Write n p (x : xs) = x : Write (n - 1) p xs
 
-
-type WriteT :: forall k t.
+type WriteT ::
+  forall k t.
   Natural ->
   k ->
   (k, t) ->
@@ -228,7 +229,8 @@ type family Assume ind ps where
   Assume 0 (x : xs) = x
   Assume n (x : xs) = Assume (n - 1) xs
 
-type AssumeT :: forall k t.
+type AssumeT ::
+  forall k t.
   Natural ->
   (k, t) ->
   k
@@ -267,7 +269,6 @@ inj pval op = go pval
 --   => PMember e p q IIdentity '() '() where
 --     injC = error "The instance of Member e p q '[] '[] '[] must never be selected"
 
-
 data S a
 data Z
 
@@ -275,7 +276,8 @@ data StateP p q a where
   PutP :: q -> StateP p q ()
   GetP :: StateP p p p
 
-getP :: forall i ps qs p effs .
+getP ::
+  forall i ps qs p effs.
   ( KnownNat i
   , FindEffT StateP effs ~ i
   , AssumeT i ps ~ p
@@ -283,10 +285,11 @@ getP :: forall i ps qs p effs .
   ) =>
   PrEffP (Op effs) ps qs p
 getP = Impure (inj n GetP) emptyCont
-  where
-    n = natVal (Proxy :: Proxy i)
+ where
+  n = natVal (Proxy :: Proxy i)
 
-putP :: forall i ps qs p effs .
+putP ::
+  forall i ps qs p effs.
   ( KnownNat i
   , FindEffT StateP effs ~ i
   , WriteT i p ps ~ qs
@@ -294,8 +297,8 @@ putP :: forall i ps qs p effs .
   p ->
   PrEffP (Op effs) ps qs ()
 putP p = Impure (inj n (PutP p)) emptyCont
-  where
-    n = natVal (Proxy :: Proxy i)
+ where
+  n = natVal (Proxy :: Proxy i)
 
 instance (Show q, Show p, Show x) => Show (StateP p q x) where
   show (PutP q) = "PutP " ++ show q
@@ -360,7 +363,7 @@ runReaderL p (Impure (PInr op) k) =
   Impure op $ IKleisliTupled $ \x -> runReaderL p (runIKleisliTupled k x)
 runReaderL _p (Scope _ _) = error "GHC is not exhaustive"
 
-data family HList (l::[Type])
+data family HList (l :: [Type])
 
 data instance HList '[] = HNil
 data instance HList (x ': xs) = x `HCons` HList xs

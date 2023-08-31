@@ -29,7 +29,9 @@ common exts
     QualifiedDo
     RankNTypes
     ScopedTypeVariables
+    StandaloneDeriving
     StandaloneKindSignatures
+    TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
@@ -67,11 +69,14 @@ library
     , text
 
   hs-source-dirs:   src
-  default-language: GHC2021
+  default-language: Haskell2010
 
 library examples
   import:           exts
-  exposed-modules:  CustomerEx
+  exposed-modules:
+    CustomerEx
+    CustomerPScoped
+    CustomerScoped
   hs-source-dirs:   examples
   build-depends:
     , base
@@ -81,4 +86,4 @@ library examples
     , preff
     , text
 
-  default-language: GHC2021
+  default-language: Haskell2010

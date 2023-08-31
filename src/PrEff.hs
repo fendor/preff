@@ -3,16 +3,16 @@
 
 module PrEff where
 
+import Control.IxMonad as Ix
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits hiding (Nat)
+import Unsafe.Coerce (unsafeCoerce)
 import Prelude hiding (Applicative (..), Monad (..))
 import qualified Prelude as P
-import Control.IxMonad as Ix
 
 -- ------------------------------------------------
 -- Main Effect monad
 -- ------------------------------------------------
-
 
 -- type Op :: forall k.
 --   [k -> k -> Type -> Type] ->
@@ -37,9 +37,8 @@ type Op ::
   Type ->
   Type
 data Op f x where
-  OHere :: f x -> Op (f : effs) x
-  OThere :: Op effs x -> Op (eff : effs) x
-
+  OHere :: eff x -> Op (eff : f) x
+  OThere :: Op f x -> Op (eff : f) x
 
 type PrEff ::
   forall k.
@@ -49,24 +48,24 @@ type PrEff ::
   k ->
   Type ->
   Type
-data PrEff effs f p q a where
-  Value :: a -> PrEff effs f p p a
+data PrEff f s p q a where
+  Value :: a -> PrEff f s p p a
   Impure ::
-    Op effs x ->
-    IKleisliTupled (PrEff effs f) '(p, x) '(r, a) ->
-    PrEff effs f p r a
+    Op f x ->
+    IKleisliTupled (PrEff f s) '(p, x) '(r, a) ->
+    PrEff f s p r a
   ImpureP ::
-    f p q x ->
-    -- PrEff f g p' q' x ->
-    IKleisliTupled (PrEff effs f) '(q, x) '(r, a) ->
-    -- (x' -> PrEff f g q r a) ->
-    PrEff effs f p r a
+    s p q x ->
+    -- PrEff f s p' q' x ->
+    IKleisliTupled (PrEff f s) '(q, x) '(r, a) ->
+    -- (x' -> PrEff f s q r a) ->
+    PrEff f s p r a
   ScopedP ::
-    ScopedE f (PrEff effs f) p p' q' q x x' ->
-    -- PrEff f g p' q' x ->
-    IKleisliTupled (PrEff effs f) '(q, x') '(r, a) ->
-    -- (x' -> PrEff f g q r a) ->
-    PrEff effs f p r a
+    ScopedE s (PrEff f s) p p' q' q x x' ->
+    -- PrEff f s p' q' x ->
+    IKleisliTupled (PrEff f s) '(q, x') '(r, a) ->
+    -- (x' -> PrEff f s q r a) ->
+    PrEff f s p r a
 
 instance Functor (PrEff effs f p q) where
   fmap = Ix.imap
@@ -107,27 +106,28 @@ type family Fst x where
 type family Snd x where
   Snd '(a, b) = b
 
--- | Wrapper type that can carry additional type state.
---
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
---   :: forall {k1} {k2} {k3} {p :: k1} {a} {m :: k1 -> k2 -> k3 -> *}
---             {q :: k2} {b :: k3}.
---      a -> m p q b
---
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
---   :: forall {k2} {p :: k2} {a} {f :: [* -> *]}
---             {s :: k2 -> k2 -> * -> *} {q :: k2} {b}.
---      a -> PrEff f s p q b
+{- | Wrapper type that can carry additional type state.
+
+>>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+  :: forall {k1} {k2} {k3} {p :: k1} {a} {m :: k1 -> k2 -> k3 -> *}
+            {q :: k2} {b :: k3}.
+     a -> m p q b
+
+>>> :t runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+  :: forall {k2} {p :: k2} {a} {f :: [* -> *]}
+            {s :: k2 -> k2 -> * -> *} {q :: k2} {b}.
+     a -> PrEff f s p q b
+-}
 newtype IKleisliTupled m ia ob = IKleisliTupled
   { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
 
-(|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
+(|>) :: (IMonad m) => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
 g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
 
-emptyCont :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
+emptyCont :: (IMonad m) => IKleisliTupled m '(p, x) '(p, x)
 emptyCont = IKleisliTupled Ix.pure
 
 transformKleisli ::
@@ -140,34 +140,36 @@ transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
 -- Scoped Algebras
 -- ------------------------------------------------
 
-type ScopeE :: forall k . (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
-data family ScopeE f
+type ScopeE :: forall k. (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
+data family ScopeE s
 
-type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
+type ScopedE s m p p' q' q x x' = ScopeE s m p p' q' q x x'
 
-type HandlerS c m n = forall r u v . c (m u v r) -> n u v (c r)
+type HandlerS c m n = forall r u v. c (m u v r) -> n u v (c r)
 
 -- TODO: this is trash
-type ScopedEffect :: forall k . (k -> k -> Type -> Type) -> Constraint
+type ScopedEffect :: forall k. (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect f where
-  mapS :: Functor c =>
+  mapS ::
+    (Functor c) =>
     c () ->
     (HandlerS c m n) ->
     ScopeE f m p p' q' q x x' ->
     ScopeE f n p p' q' q (c x) (c x')
 
-weave :: (ScopedEffect f, Functor c) =>
+weave ::
+  (ScopedEffect s, Functor c) =>
   c () ->
-  HandlerS c m n->
-  ScopedE f m p p' q' q x x' ->
-  ScopedE f n p p' q' q (c x) (c x')
+  HandlerS c m n ->
+  ScopedE s m p p' q' q x x' ->
+  ScopedE s n p p' q' q (c x) (c x')
 weave = mapS
 
 -- ------------------------------------------------
 -- Utility functions
 -- ------------------------------------------------
 
-send :: Member f eff => f a -> PrEff eff s p p a
+send :: (Member eff f) => eff a -> PrEff f s p p a
 send f = Impure (inj f) emptyCont
 
 sendP :: s p q a -> PrEff eff s p q a
@@ -190,7 +192,8 @@ foldP ::
   AlgScoped s ->
   Alg (Op f) ->
   Gen a b ->
-  PrEff f s p q a -> b
+  PrEff f s p q a ->
+  b
 foldP algP algScoped alg gen (Value a) =
   gen a
 foldP algP algScoped alg gen (Impure op k) =
@@ -200,16 +203,16 @@ foldP algP algScoped alg gen (ImpureP op k) =
 foldP algP algScoped alg gen (ScopedP op k) =
   foldP algP algScoped alg gen (runIKleisliTupled k (algScoped op))
 
-handleEff :: Alg f -> Gen a b -> PrEff (f:eff) IVoid p q a -> PrEff eff IVoid p q b
+handleEff :: Alg f -> Gen a b -> PrEff (f : eff) IVoid p q a -> PrEff eff IVoid p q b
 handleEff alg gen (Value a) = pure $ gen a
 handleEff alg gen (Impure (OHere op) k) = handleEff alg gen (runIKleisliTupled k (alg op))
 handleEff alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handleEff alg gen $ runIKleisliTupled k x)
 handleEff alg gen (ImpureP op k) = error "Impossible"
 handleEff alg gen (ScopedP op k) = error "Impossible"
 
-type Alg f = forall x . f x -> x
-type AlgP f = forall x p q . f p q x -> x
-type AlgScoped s = forall x m p p' q' q x' . ScopeE s m p p' q' q x' x -> x
+type Alg f = forall x. f x -> x
+type AlgP f = forall x p q. f p q x -> x
+type AlgScoped s = forall x m p p' q' q x'. ScopeE s m p p' q' q x' x -> x
 type Gen a b = a -> b
 
 -- ------------------------------------------------
@@ -220,10 +223,9 @@ run :: PrEff '[] IVoid p q a -> a
 run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
 -- Natural transformation
-type (~>) f g = forall x . f x -> g x
+type (~>) f g = forall x. f x -> g x
 
-
-interpret :: ScopedEffect f => (forall u. eff ~> PrEff effs f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs f p q
+interpret :: (ScopedEffect f) => (forall u. eff ~> PrEff effs f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs f p q
 interpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -237,10 +239,10 @@ interpret handler = \case
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ interpret handler m) op)
       (IKleisliTupled $ \(_, x) -> interpret handler (runIKleisliTupled k x))
-    where
-      emptyCtx = ((), ())
+   where
+    emptyCtx = ((), ())
 
-reinterpret :: ScopedEffect f => (forall u . eff ~> PrEff (newEff : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (newEff : effs) f p q
+reinterpret :: (ScopedEffect f) => (forall u. eff ~> PrEff (newEff : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (newEff : effs) f p q
 reinterpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -254,10 +256,10 @@ reinterpret handler = \case
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
       (IKleisliTupled $ \(_, x) -> reinterpret handler (runIKleisliTupled k x))
-    where
-      emptyCtx = ((), ())
+   where
+    emptyCtx = ((), ())
 
-reinterpret2 :: ScopedEffect f => (forall u . eff ~> PrEff (e1 : e2 : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : effs) f p q
+reinterpret2 :: (ScopedEffect f) => (forall u. eff ~> PrEff (e1 : e2 : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : effs) f p q
 reinterpret2 handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -271,12 +273,13 @@ reinterpret2 handler = \case
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
       (IKleisliTupled $ \(_, x) -> reinterpret2 handler (runIKleisliTupled k x))
-    where
-      emptyCtx = ((), ())
+   where
+    emptyCtx = ((), ())
 
-interpretStateful :: ScopedEffect f =>
+interpretStateful ::
+  (ScopedEffect f) =>
   s ->
-  (forall v x . s -> eff x -> PrEff effs f v v (s, x)) ->
+  (forall v x. s -> eff x -> PrEff effs f v v (s, x)) ->
   PrEff (eff : effs) f ps qs a ->
   PrEff effs f ps qs (s, a)
 interpretStateful !s _hdl (Value a) = Ix.return (s, a)
@@ -287,44 +290,60 @@ interpretStateful !s hdl (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (
 interpretStateful !s hdl (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ interpretStateful s hdl . runIKleisliTupled k)
 interpretStateful !s hdl (ScopedP op k) =
   ScopedP
-    (weave
-      (s, ())
-      (\(s', inner) -> Ix.do
-        (x, newS) <- interpretStateful s' hdl inner
-        pure (x, newS)
+    ( weave
+        (s, ())
+        ( \(s', inner) -> Ix.do
+            (x, newS) <- interpretStateful s' hdl inner
+            pure (x, newS)
         )
-      op)
+        op
+    )
     (IKleisliTupled $ \(s', a) -> interpretStateful s' hdl $ runIKleisliTupled k a)
 
-interpretScoped ::
-  (forall u v x. s u v x -> x) ->
-  -- (ScopedE )
-  PrEff f s p q a ->
+type Runner f m =
+  forall u v x. u -> m u v x -> PrEff f IVoid () () (x, v)
+
+type BaseAlg f s =
+  forall p' q' x. p' -> s p' q' x -> PrEff f IVoid () () (q', x)
+
+type BaseAlg_ f s =
+  forall p' q' x. p' -> s p' q' x -> PrEff f IVoid () () x
+
+type ScopedAlg f s =
+  forall m p p' q' q x' x a.
+  (m ~ PrEff f s) =>
+  (forall r. IKleisliTupled m '(q, x) '(r, a)) ->
+  Runner f m ->
+  p ->
+  ScopedE s m p p' q' q x' x ->
+  PrEff f IVoid () () (a, q)
+
+type ScopedAlg_ f s =
+  forall m p p' q' q x' x a r.
+  (m ~ PrEff f s) =>
+  IKleisliTupled m '(q, x) '(r, a) ->
+  Runner f m ->
+  p ->
+  ScopedE s m p p' q' q x' x ->
   PrEff f IVoid () () a
-interpretScoped hdl (Value a) = pure a
-interpretScoped hdl (Impure op k) = Impure op $
-  IKleisliTupled $ \x -> interpretScoped hdl (runIKleisliTupled k x)
-interpretScoped hdl (ImpureP cmd k) = Ix.do
-  let a = hdl cmd
-  interpretScoped hdl $ runIKleisliTupled k a
-interpretScoped hdl (ScopedP _ _) = error "Impossible for now"
 
 interpretStatefulScoped ::
-  (forall p' q' x. p' -> s p' q' x -> (q', x)) ->
+  forall p f s q a.
+  BaseAlg f s ->
+  ScopedAlg f s ->
   p ->
-  PrEff eff s p q a ->
-  PrEff eff IVoid () () (a, q)
-interpretStatefulScoped alg p (Value x) = Ix.return (x, p)
-interpretStatefulScoped alg p (Impure cmd k) =
-  Impure cmd $
-    IKleisliTupled $ \x -> interpretStatefulScoped alg p $ runIKleisliTupled k x
-interpretStatefulScoped alg p (ImpureP op k) = do
-  let (q, a) = alg p op
-  interpretStatefulScoped alg q (runIKleisliTupled k a)
-interpretStatefulScoped alg p (ScopedP _ k) = Ix.do
-  error "Impossible for now"
-
-
+  PrEff f s p q a ->
+  PrEff f IVoid () () (a, q)
+interpretStatefulScoped alg salg p (Value x) = Ix.return (x, p)
+interpretStatefulScoped alg salg p (Impure cmd k) =
+  Impure cmd
+    $ IKleisliTupled
+    $ \x -> interpretStatefulScoped alg salg p $ runIKleisliTupled k x
+interpretStatefulScoped alg salg p (ImpureP op k) = Ix.do
+  (q, a) <- alg p op
+  interpretStatefulScoped alg salg q (runIKleisliTupled k a)
+interpretStatefulScoped alg salg p (ScopedP op k) =
+  salg (unsafeCoerce k) (interpretStatefulScoped alg salg) p (unsafeCoerce op)
 
 -- runStateDirect ::
 --   p ->
@@ -342,17 +361,17 @@ interpretStatefulScoped alg p (ScopedP _ k) = Ix.do
 --   (x, _q) <- runStateDirect (f p) m
 --   runStateDirect p (runIKleisliTupled k x)
 
+{- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
+more summand.
 
--- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
--- more summand.
---
--- /O(1)/
-weaken :: Op xs a -> Op (x:xs) a
+/O(1)/
+-}
+weaken :: Op xs a -> Op (x : xs) a
 weaken op = OThere op
 
 -- data IIdentity p q a where
 --  IIdentity :: a -> IIdentity p q a
-data IVoid p q a where
+data IVoid p q a
 
 algIVoid :: AlgP IVoid
 algIVoid _ = error "Invalid"
@@ -365,11 +384,11 @@ genIVoid x = x
 
 instance ScopedEffect IVoid where
   mapS ::
-    Functor c =>
-    c ()
-    -> (forall r u v . c (m u v r) -> n u v (c r))
-    -> ScopeE IVoid m p p' q' q x x'
-    -> ScopeE IVoid n p p' q' q (c x) (c x')
+    (Functor c) =>
+    c () ->
+    (forall r u v. c (m u v r) -> n u v (c r)) ->
+    ScopeE IVoid m p p' q' q x x' ->
+    ScopeE IVoid n p p' q' q (c x) (c x')
   mapS ctx nt s = absurdS s
 
 absurdS :: ScopeE IVoid m p p' q' q x x' -> a
@@ -378,7 +397,7 @@ absurdS v = error "Absurd"
 -- runIIdentity :: IIdentity p q a -> a
 -- runIIdentity (IIdentity a) = a
 
-data instance ScopeE IVoid m p p' q' q x' x where
+data instance ScopeE IVoid m p p' q' q x' x
 
 runIO :: PrEff '[Embed IO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
@@ -389,8 +408,9 @@ runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
 runIO (ScopedP _ _) = error "Impossible"
 
-runEmbed :: (ScopedEffect s, P.Monad m) =>
-  (forall x u v . m x -> PrEff effs s u v x) ->
+runEmbed ::
+  (ScopedEffect s, P.Monad m) =>
+  (forall x u v. m x -> PrEff effs s u v x) ->
   PrEff (Embed m : effs) s p q a ->
   PrEff effs s p q (m a)
 runEmbed handle (Value a) = P.pure $ P.pure a
@@ -401,15 +421,13 @@ runEmbed handle (Impure (OThere _) _k) = error "Impossible"
 runEmbed handle (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
 runEmbed handle (ScopedP _ _) = error "Impossible"
 
-
-
-embedIO :: Member (Embed IO) effs => IO a -> PrEff effs f p p a
+embedIO :: (Member (Embed IO) effs) => IO a -> PrEff effs f p p a
 embedIO io = embed io
 
 data Embed m a where
   Embed :: m a -> Embed m a
 
-embed :: Member (Embed m) f => m a -> PrEff f s p p a
+embed :: (Member (Embed m) f) => m a -> PrEff f s p p a
 embed act = send (Embed act)
 
 -- ------------------------------------------------
@@ -479,7 +497,7 @@ type family Take xs n where
 
 data AccessLevel = N | R | X
 
---data Container = Contains AccessLevel
+-- data Container = Contains AccessLevel
 type Acceptable :: AccessLevel -> AccessLevel -> AccessLevel -> Constraint
 class Acceptable a b c | a b -> c, a c -> b
 
@@ -513,7 +531,7 @@ instance N ≤ R
 
 instance N ≤ N
 
-instance TypeError Msg => X ≤ N
+instance (TypeError Msg) => X ≤ N
 
 type Max :: AccessLevel -> AccessLevel -> AccessLevel
 type family Max a b where
@@ -546,21 +564,23 @@ type family Assume ind ps where
 --     go 0 = unsafeCoerce OHere op
 --     go n = unsafeCoerce OThere (go (n - 1))
 
-class Member f effs where
-  inj :: f a -> Op effs a
+class Member eff f where
+  inj :: eff a -> Op f a
 
 instance {-# OVERLAPPING #-} Member e (e ': effs) where
   inj :: f a -> Op (f : effs) a
   inj e = OHere e
 
-instance {-# INCOHERENT #-} Member e effs => Member e (eff ': effs) where
+instance {-# INCOHERENT #-} (Member e effs) => Member e (eff ': effs) where
   inj = OThere . inj
 
 instance
-  TypeError
-    ( Text "Failed to resolve effect " :<>: ShowType e
-        :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
-    ) =>
+  ( TypeError
+      ( Text "Failed to resolve effect "
+          :<>: ShowType e
+          :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+      )
+  ) =>
   Member e '[]
   where
   inj = error "The instance of Member e '[] must never be selected"
