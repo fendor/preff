@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Control.IxMonad where
 
 import Prelude hiding (Monad(..), Applicative(..), Functor(..), mapM)

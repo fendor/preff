@@ -20,8 +20,8 @@ data CustomerStore p q a where
 data instance ScopeE CustomerStore m p p' q' q x' x where
   WithStore ::
     FilePath ->
-    m () () a ->
-    ScopeE CustomerStore m p () () q a ()
+    m () () () ->
+    ScopeE CustomerStore m p () () q () ()
 
 readStore :: FilePath -> PrEff eff CustomerStore () () [Customer]
 readStore p = sendP (ReadStore p)
@@ -29,63 +29,53 @@ readStore p = sendP (ReadStore p)
 writeStore :: FilePath -> [Customer] -> PrEff eff CustomerStore () () ()
 writeStore p c = sendP (WriteStore p c)
 
-withStore :: FilePath -> PrEff eff CustomerStore () () x -> PrEff eff CustomerStore () () ()
+withStore :: FilePath -> PrEff eff CustomerStore () () () -> PrEff eff CustomerStore () () ()
 withStore i m = sendScoped (WithStore i m)
 
 runCustomerStoreIO ::
   (Member (Embed IO) f) =>
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
-runCustomerStoreIO = \case
-  Value a -> pure a
-  Impure op k ->
-    Impure op
-      $ IKleisliTupled
-      $ \x -> runCustomerStoreIO $ runIKleisliTupled k x
-  ImpureP op k ->
-    case op of
+runCustomerStoreIO = interpretScopedH
+  (\case
       ReadStore fp -> Ix.do
-        cs <- embed $ readCustomersIO fp
-        runCustomerStoreIO $ runIKleisliTupled k cs
+        embed $ readCustomersIO fp
       WriteStore fp cs -> Ix.do
-        r <- embed $ writeCustomersIO fp cs
-        runCustomerStoreIO $ runIKleisliTupled k r
-  ScopedP (WithStore fp m) k -> Ix.do
-    embed (customersExistIO fp) >>= \case
-      False ->
-        runCustomerStoreIO $ runIKleisliTupled k ()
-      True -> Ix.do
-        _a <- runCustomerStoreIO m
-        runCustomerStoreIO $ runIKleisliTupled k ()
+        embed $ writeCustomersIO fp cs
+  )
+  (\runner -> \case
+    WithStore fp m -> Ix.do
+      embed (customersExistIO fp) >>= \case
+        True -> Ix.do
+          runner m
+
+        False -> Ix.do
+          pure ()
+  )
 
 runCustomerStoreViaState ::
   (Member (State (Map FilePath [Customer])) f) =>
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
-runCustomerStoreViaState = \case
-  Value a -> pure a
-  Impure op k ->
-    Impure op
-      $ IKleisliTupled
-      $ \x -> runCustomerStoreViaState $ runIKleisliTupled k x
-  ImpureP op k ->
-    case op of
+runCustomerStoreViaState = interpretScopedH
+  (\case
       ReadStore fp -> Ix.do
         s <- get
-        let cs = s ! fp
-        runCustomerStoreViaState $ runIKleisliTupled k cs
+        pure $ s ! fp
       WriteStore fp cs -> Ix.do
         s <- get
-        r <- put (insert fp cs s)
-        runCustomerStoreViaState $ runIKleisliTupled k r
-  ScopedP (WithStore fp m) k -> Ix.do
-    s <- get @(Map FilePath [Customer])
-    case Map.lookup fp s of
-      Nothing ->
-        runCustomerStoreViaState $ runIKleisliTupled k ()
-      Just _ -> Ix.do
-        _a <- runCustomerStoreViaState m
-        runCustomerStoreViaState $ runIKleisliTupled k ()
+        put (insert fp cs s)
+  )
+  (\runner -> \case
+    WithStore fp m -> Ix.do
+      s <- get @(Map FilePath [Customer])
+      case Map.lookup fp s of
+        Nothing ->
+          pure ()
+
+        Just _ -> Ix.do
+          runner m
+  )
 
 processCustomers' ::
   (Member CustomerService f) =>

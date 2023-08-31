@@ -45,7 +45,7 @@ type ScopedAlgebra i o m f s p q a =
 runReaderP :: p -> PrEff f ReaderP p q a -> PrEff f IVoid () () (a, q)
 runReaderP = interpretStatefulScoped readerBaseAlgM' scopedAlg
 
-scopedAlg :: ScopedAlg f ReaderP
+scopedAlg :: ScopedAlgS f ReaderP
   -- (m ~ PrEff f ReaderP) =>
   -- (forall r . IKleisliTupled m '(q, x) '(r, a)) ->
   -- Runner f m ->

@@ -300,37 +300,46 @@ interpretStateful !s hdl (ScopedP op k) =
     )
     (IKleisliTupled $ \(s', a) -> interpretStateful s' hdl $ runIKleisliTupled k a)
 
-type Runner f m =
+type RunnerS f m =
   forall u v x. u -> m u v x -> PrEff f IVoid () () (x, v)
 
-type BaseAlg f s =
+type Runner f m =
+  forall u v x. m u v x -> PrEff f IVoid () () x
+
+type BaseAlgS f s =
   forall p' q' x. p' -> s p' q' x -> PrEff f IVoid () () (q', x)
 
-type BaseAlg_ f s =
-  forall p' q' x. p' -> s p' q' x -> PrEff f IVoid () () x
+type BaseAlg f s =
+  forall p' q' x. s p' q' x -> PrEff f IVoid () () x
 
-type ScopedAlg f s =
+type ScopedAlgS f s =
   forall m p p' q' q x' x a.
   (m ~ PrEff f s) =>
   (forall r. IKleisliTupled m '(q, x) '(r, a)) ->
-  Runner f m ->
+  RunnerS f m ->
   p ->
   ScopedE s m p p' q' q x' x ->
   PrEff f IVoid () () (a, q)
 
-type ScopedAlg_ f s =
+type ScopedAlg f s =
   forall m p p' q' q x' x a r.
   (m ~ PrEff f s) =>
   IKleisliTupled m '(q, x) '(r, a) ->
   Runner f m ->
-  p ->
   ScopedE s m p p' q' q x' x ->
   PrEff f IVoid () () a
 
+type ScopedAlg' f s =
+  forall m p p' q' q x' x .
+  (m ~ PrEff f s) =>
+  Runner f m ->
+  ScopedE s m p p' q' q x' x ->
+  PrEff f IVoid () () x
+
 interpretStatefulScoped ::
   forall p f s q a.
-  BaseAlg f s ->
-  ScopedAlg f s ->
+  BaseAlgS f s ->
+  ScopedAlgS f s ->
   p ->
   PrEff f s p q a ->
   PrEff f IVoid () () (a, q)
@@ -344,6 +353,42 @@ interpretStatefulScoped alg salg p (ImpureP op k) = Ix.do
   interpretStatefulScoped alg salg q (runIKleisliTupled k a)
 interpretStatefulScoped alg salg p (ScopedP op k) =
   salg (unsafeCoerce k) (interpretStatefulScoped alg salg) p (unsafeCoerce op)
+
+interpretScoped ::
+  forall p f s q a.
+  BaseAlg f s ->
+  ScopedAlg f s ->
+  PrEff f s p q a ->
+  PrEff f IVoid () () a
+interpretScoped alg salg (Value x) = Ix.return x
+interpretScoped alg salg (Impure cmd k) =
+  Impure cmd
+    $ IKleisliTupled
+    $ \x -> interpretScoped alg salg $ runIKleisliTupled k x
+interpretScoped alg salg (ImpureP op k) = Ix.do
+  a <- alg op
+  interpretScoped alg salg (runIKleisliTupled k a)
+interpretScoped alg salg (ScopedP op k) =
+  salg k (interpretScoped alg salg) op
+
+interpretScopedH ::
+  forall p f s q a.
+  BaseAlg f s ->
+  ScopedAlg' f s ->
+  PrEff f s p q a ->
+  PrEff f IVoid () () a
+interpretScopedH alg salg (Value x) = Ix.return x
+interpretScopedH alg salg (Impure cmd k) =
+  Impure cmd
+    $ IKleisliTupled
+    $ \x -> interpretScopedH alg salg $ runIKleisliTupled k x
+interpretScopedH alg salg (ImpureP op k) = Ix.do
+  a <- alg op
+  interpretScopedH alg salg (runIKleisliTupled k a)
+interpretScopedH alg salg (ScopedP op k) = Ix.do
+  r <- salg (interpretScopedH alg salg) op
+  interpretScopedH alg salg $ runIKleisliTupled k r
+
 
 -- runStateDirect ::
 --   p ->
