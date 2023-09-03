@@ -1,7 +1,6 @@
 module CustomerPScoped where
 
 import qualified Control.IxMonad as Ix
-import CustomerEx
 import Data.Map
 import qualified Data.Map as Map
 import Data.Proxy
@@ -12,6 +11,7 @@ import PrEff.Simple.State
 import PrEff.Simple.Writer
 import System.Directory (doesFileExist)
 import System.FilePath
+import Utils
 
 data Store inp
 data Empty
@@ -40,59 +40,61 @@ runCustomerStoreIO ::
   (Member (Embed IO) f) =>
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
-runCustomerStoreIO = interpretScoped
-  (\case
-      ReadStore (p :: proxy inp) -> Ix.do
-        let fp = symbolVal p
-        embed $ readCustomersIO fp
-      WriteStore (p :: proxy out) cs -> Ix.do
-        let fp = symbolVal p
-        embed $ writeCustomersIO fp cs
-  )
-  (\k runner -> \case
-    WithStore p m -> Ix.do
-      let fp = symbolVal p
-      embed (customersExistIO fp) >>= \case
-        False ->
-          runner $ runIKleisliTupled k ()
-        True -> Ix.do
-          _a <- runner m
-          runner $ runIKleisliTupled k ()
-  )
+runCustomerStoreIO =
+  interpretScoped
+    ( \case
+        ReadStore (p :: proxy inp) -> do
+          let fp = symbolVal p
+          embed $ readCustomersIO fp
+        WriteStore (p :: proxy out) cs -> do
+          let fp = symbolVal p
+          embed $ writeCustomersIO fp cs
+    )
+    ( \k runner -> \case
+        WithStore p m -> do
+          let fp = symbolVal p
+          embed (customersExistIO fp) >>= \case
+            False ->
+              runner $ runIKleisliTupled k ()
+            True -> do
+              _a <- runner m
+              runner $ runIKleisliTupled k ()
+    )
 
 runCustomerStoreViaState ::
   (Member (State (Map FilePath [Customer])) f) =>
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
-runCustomerStoreViaState = interpretScoped
-  (\case
-      ReadStore (p :: proxy inp) -> Ix.do
-        let fp = symbolVal p
-        s <- get
-        pure $ s ! fp
-      WriteStore (p :: proxy out) cs -> Ix.do
-        let fp = symbolVal p
-        s <- get
-        put (insert fp cs s)
-  )
-  (\k runner -> \case
-    WithStore p m -> Ix.do
-      let fp = symbolVal p
-      s <- get @(Map FilePath [Customer])
-      case Map.lookup fp s of
-        Nothing ->
-          runner $ runIKleisliTupled k ()
-        Just _ -> Ix.do
-          _a <- runner m
-          runner $ runIKleisliTupled k ()
-  )
+runCustomerStoreViaState =
+  interpretScoped
+    ( \case
+        ReadStore (p :: proxy inp) -> do
+          let fp = symbolVal p
+          s <- get
+          pure $ s ! fp
+        WriteStore (p :: proxy out) cs -> do
+          let fp = symbolVal p
+          s <- get
+          put (insert fp cs s)
+    )
+    ( \k runner -> \case
+        WithStore p m -> do
+          let fp = symbolVal p
+          s <- get @(Map FilePath [Customer])
+          case Map.lookup fp s of
+            Nothing ->
+              runner $ runIKleisliTupled k ()
+            Just _ -> do
+              _a <- runner m
+              runner $ runIKleisliTupled k ()
+    )
 
-processCustomers' ::
+processCustomers ::
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
   proxy inp ->
   proxy out ->
   PrEff f CustomerStore (Store inp) (Store out) ()
-processCustomers' inp out = Ix.do
+processCustomers inp out = Ix.do
   customers <- readStore inp
   newCustomers <- process customers
   writeStore out newCustomers
@@ -104,7 +106,7 @@ scopedProcessCustomers = Ix.do
   tell ["Hello, World!"]
   withStore (Proxy @"input.txt") $ Ix.do
     tell ["Start the processing!"]
-    processCustomers' (Proxy @"input.txt") (Proxy @"output.txt")
+    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
   tell ["Stop execution"]
 
 -- >>> :t runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers

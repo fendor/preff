@@ -77,7 +77,8 @@ library examples
     CustomerEx
     CustomerPScoped
     CustomerScoped
-  hs-source-dirs:   examples
+    Utils
+  hs-source-dirs:   examples/customers/
   build-depends:
     , base
     , containers

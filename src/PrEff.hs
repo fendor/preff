@@ -450,7 +450,7 @@ runIO (Impure (OHere (Embed a)) k) = do
   x <- a
   runIO $ runIKleisliTupled k x
 runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
+runIO (ImpureP _cmd _k) = error "Impossible"
 runIO (ScopedP _ _) = error "Impossible"
 
 runEmbed ::
