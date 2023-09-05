@@ -24,8 +24,8 @@ data instance ScopeE CustomerStore m p p' q' q x' x where
   WithStore ::
     (KnownSymbol inp) =>
     proxy inp ->
-    m (Store inp) (Store out) () ->
-    ScopeE CustomerStore m p (Store inp) (Store out) p () ()
+    m (Store inp) q' () ->
+    ScopeE CustomerStore m p (Store inp) q' p () ()
 
 readStore :: (KnownSymbol inp) => proxy inp -> PrEff eff CustomerStore (Store inp) (Store inp) [Customer]
 readStore p = sendP (ReadStore p)
@@ -89,13 +89,22 @@ runCustomerStoreViaState =
               runner $ runIKleisliTupled k ()
     )
 
-processCustomers :: forall inp out f.
+processCustomers ::
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
+  Proxy inp ->
+  Proxy out ->
   PrEff f CustomerStore (Store inp) (Store out) ()
-processCustomers = Ix.do
-  customers <- readStore (Proxy :: Proxy inp)
+processCustomers inp out = Ix.do
+  customers <- readStore inp
   newCustomers <- process customers
-  writeStore (Proxy :: Proxy out) newCustomers
+  writeStore out newCustomers
+
+invocationExample ::
+  (Members [Writer [String], CustomerService] f) =>
+  PrEff f CustomerStore p p ()
+invocationExample = do
+  withStore (Proxy @"input.txt") $ Ix.do
+    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
 
 scopedProcessCustomers ::
   (Members [Writer [String], CustomerService] f) =>
@@ -104,7 +113,7 @@ scopedProcessCustomers = Ix.do
   tell ["Hello, World!"]
   withStore (Proxy @"input.txt") $ Ix.do
     tell ["Start the processing!"]
-    processCustomers @"input.txt" @"output.txt" -- (Proxy @"input.txt") (Proxy @"output.txt")
+    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
   tell ["Stop execution"]
 
 -- >>> :t runIO . runWriter @[String] . runCustomerService $ runCustomerStoreIO scopedProcessCustomers

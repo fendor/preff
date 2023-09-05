@@ -21,7 +21,7 @@ data instance ScopeE CustomerStore m p p' q' q x' x where
   WithStore ::
     FilePath ->
     m () () () ->
-    ScopeE CustomerStore m p () () q () ()
+    ScopeE CustomerStore m p () () p () ()
 
 readStore :: FilePath -> PrEff eff CustomerStore () () [Customer]
 readStore p = sendP (ReadStore p)
@@ -29,7 +29,10 @@ readStore p = sendP (ReadStore p)
 writeStore :: FilePath -> [Customer] -> PrEff eff CustomerStore () () ()
 writeStore p c = sendP (WriteStore p c)
 
-withStore :: FilePath -> PrEff eff CustomerStore () () () -> PrEff eff CustomerStore () () ()
+withStore ::
+  FilePath ->
+  PrEff eff CustomerStore () () () ->
+  PrEff eff CustomerStore p p ()
 withStore i m = sendScoped (WithStore i m)
 
 runCustomerStoreIO ::
