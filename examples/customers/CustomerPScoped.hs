@@ -24,8 +24,8 @@ data instance ScopeE CustomerStore m p p' q' q x' x where
   WithStore ::
     (KnownSymbol inp) =>
     proxy inp ->
-    m (Store inp) (Store out) a ->
-    ScopeE CustomerStore m p (Store inp) (Store out) q a ()
+    m (Store inp) (Store out) () ->
+    ScopeE CustomerStore m p (Store inp) (Store out) p () ()
 
 readStore :: (KnownSymbol inp) => proxy inp -> PrEff eff CustomerStore (Store inp) (Store inp) [Customer]
 readStore p = sendP (ReadStore p)
@@ -33,7 +33,7 @@ readStore p = sendP (ReadStore p)
 writeStore :: (KnownSymbol out) => proxy out -> [Customer] -> PrEff eff CustomerStore p (Store out) ()
 writeStore p c = sendP (WriteStore p c)
 
-withStore :: (KnownSymbol inp) => proxy inp -> PrEff eff CustomerStore (Store inp) (Store out) x -> PrEff eff CustomerStore p q ()
+withStore :: (KnownSymbol inp) => proxy inp -> PrEff eff CustomerStore (Store inp) (Store out) () -> PrEff eff CustomerStore p p ()
 withStore i m = sendScoped (WithStore i m)
 
 runCustomerStoreIO ::
@@ -89,28 +89,26 @@ runCustomerStoreViaState =
               runner $ runIKleisliTupled k ()
     )
 
-processCustomers ::
+processCustomers :: forall inp out f.
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
-  proxy inp ->
-  proxy out ->
   PrEff f CustomerStore (Store inp) (Store out) ()
-processCustomers inp out = Ix.do
-  customers <- readStore inp
+processCustomers = Ix.do
+  customers <- readStore (Proxy :: Proxy inp)
   newCustomers <- process customers
-  writeStore out newCustomers
+  writeStore (Proxy :: Proxy out) newCustomers
 
 scopedProcessCustomers ::
   (Members [Writer [String], CustomerService] f) =>
-  PrEff f CustomerStore Empty Empty ()
+  PrEff f CustomerStore p p ()
 scopedProcessCustomers = Ix.do
   tell ["Hello, World!"]
   withStore (Proxy @"input.txt") $ Ix.do
     tell ["Start the processing!"]
-    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
+    processCustomers @"input.txt" @"output.txt" -- (Proxy @"input.txt") (Proxy @"output.txt")
   tell ["Stop execution"]
 
--- >>> :t runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers
--- runIO . runCustomerService $ runCustomerStoreIO scopedProcessCustomers :: IO ()
+-- >>> :t runIO . runWriter @[String] . runCustomerService $ runCustomerStoreIO scopedProcessCustomers
+-- runIO . runWriter @[String] . runCustomerService $ runCustomerStoreIO scopedProcessCustomers :: IO ([String], ())
 --
 -- >>> run . runWriter @[String] . runState (Map.fromList [("input.txt", [()])]) . runCustomerService $ runCustomerStoreViaState scopedProcessCustomers
 -- (["Hello, World!","Start the processing!","Stop execution"],(fromList [("input.txt",[()]),("output.txt",[()])],()))
