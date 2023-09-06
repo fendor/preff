@@ -200,19 +200,19 @@ choice2 ::
     String
 choice2 = Ix.do
   n <- recv @Int
-  ifThenElse
+  if
     (n < 0)
-    ( Ix.do
+    then Ix.do
         sel1 $ Ix.do
           x <- recv @String
           Ix.return x
-    )
-    ( Ix.do
+
+    else Ix.do
         sel2 $ Ix.do
           send @String "Test"
           x <- recv @String
           Ix.return x
-    )
+
 
 simpleLoopingClientServer :: Member (State Int) effs => PrEff effs IVoid () () ([()], [Int])
 simpleLoopingClientServer = connect' clientLoop serverLoop

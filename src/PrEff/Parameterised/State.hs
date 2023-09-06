@@ -99,23 +99,6 @@ stateAlg k = \case
   GetP -> (k, k)
   PutP q -> (q, ())
 
-runStateDirect ::
-  (forall p' q' x. p' -> StateP p' q' x -> (q', x)) ->
-  p ->
-  PrEff eff StateP p q a ->
-  PrEff eff IVoid () () (a, q)
-runStateDirect alg p (Value x) = Ix.return (x, p)
-runStateDirect alg p (Impure cmd k) =
-  Impure cmd
-    $ IKleisliTupled
-    $ \x -> runStateDirect alg p $ runIKleisliTupled k x
-runStateDirect alg p (ImpureP op k) = do
-  let (q, a) = stateAlg p op
-  runStateDirect alg q (runIKleisliTupled k a)
-runStateDirect alg p (ScopedP (Zoom f restore m) k) = Ix.do
-  (x, q) <- runStateDirect alg (f p) m
-  runStateDirect alg (restore q) (runIKleisliTupled k x)
-
 runStateP ::
   p ->
   PrEff f StateP p q a ->

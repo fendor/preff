@@ -634,21 +634,3 @@ type family Members fs effs where
   Members (f ': fs) effs = (Member f effs, Members fs effs)
   Members '[] effs = ()
 
--- ------------------------------------------------
--- Rebindable Syntax and IMonad Utils
--- ------------------------------------------------
-
-ifThenElse :: Bool -> p -> p -> p
-ifThenElse True a _ = a
-ifThenElse False _ b = b
-
-when :: (IMonad m) => Bool -> m i i () -> m i i ()
-when False _ = return ()
-when True a = a
-
-foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
-foldM [] c _f = return c
-foldM [x] c f =
-  f x c
-foldM (x : xs) c f =
-  f x c >>= \c' -> foldM xs c' f

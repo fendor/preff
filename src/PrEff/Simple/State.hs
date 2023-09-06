@@ -9,38 +9,6 @@ data State s x where
   Get :: State s s
   deriving (Typeable)
 
-data StateP s p q x where
-  PutP :: !s -> StateP s () () ()
-  GetP :: StateP s () () s
-
-data instance ScopeE (StateP s) m p p' q' q x x' where
-  ModifyP ::
-    (s -> s) ->
-    m () () x ->
-    ScopeE (StateP s) m () () () () x x
-
-instance ScopedEffect (StateP s) where
-  mapS ctx nt (ModifyP f act) =
-    ModifyP f (nt $ act <$ ctx)
-
-putP :: s -> PrEff eff (StateP s) () () ()
-putP s = sendP $ PutP s
-
-getP :: PrEff eff (StateP a) () () a
-getP = sendP $ GetP
-
-runStateP :: s ->
-  PrEff effs (StateP s) () () a ->
-  PrEff effs IVoid () () (s, a)
-runStateP s = \case
-  (Value a) -> Ix.return (s, a)
-  (Impure op k) -> Impure op $ IKleisliTupled $ \x -> runStateP s (runIKleisliTupled k x)
-  (ImpureP (PutP s') k) -> runStateP s' $ runIKleisliTupled k ()
-  (ImpureP GetP k) -> runStateP s $ runIKleisliTupled k s
-  (ScopedP (ModifyP f act) k) -> Ix.do
-    (s', v) <- runStateP (f s) act
-    runStateP s' $ runIKleisliTupled k v
-
 get ::
   (Member (State s) effs) =>
   PrEff effs f ps ps s

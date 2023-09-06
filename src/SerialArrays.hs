@@ -17,21 +17,22 @@ import PrEff.Parameterised.Array hiding (afork, join, length, malloc, read, slic
 import Unsafe.Coerce (unsafeCoerce)
 import PrEff
 import qualified Control.IxMonad as Ix
+import Control.IxMonad
 import Prelude hiding (Monad (..), length, read)
 
 afork a = ScopedP (AFork a) emptyCont
 
-join i1 i2 = ImpureP (Join i1 i2) $ IKleisliTupled Ix.return
+join i1 i2 = sendP (Join i1 i2)
 
-write a b c = ImpureP (Write a b c) $ IKleisliTupled Ix.return
+write a b c = sendP (Write a b c)
 
-malloc a b = ImpureP (Malloc a b) $ IKleisliTupled Ix.return
+malloc a b = sendP (Malloc a b)
 
-slice a b = ImpureP (Split a b) $ IKleisliTupled Ix.return
+slice a b = sendP (Split a b)
 
-length a = ImpureP (Length a) $ IKleisliTupled Ix.return
+length a = sendP (Length a)
 
-read a b = ImpureP (Read a b) $ IKleisliTupled Ix.return
+read a b = sendP (Read a b)
 
 runSerialArrays ::
   (Member (Embed IO) effs) =>
@@ -118,13 +119,6 @@ imagToComplex a = 0 :+ a
 
 toDouble :: (Integral a) => a -> Double
 toDouble = fromIntegral
-
-forM_ :: (Ix.IMonad m) => [a] -> (a -> m i i ()) -> m i i ()
-forM_ [] _ = Ix.return ()
-forM_ [x] f =
-  f x
-forM_ (x : xs) f =
-  f x Ix.>>= \_c -> forM_ xs f
 
 dot :: [Int] -> [Int] -> Int
 dot [a, b, c] [x, y, z] = a * x + b * y + c * z

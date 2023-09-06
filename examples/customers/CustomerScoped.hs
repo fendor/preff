@@ -12,6 +12,7 @@ import PrEff.Simple.Writer
 import System.Directory (doesFileExist)
 import System.FilePath
 import Utils
+import Control.Monad
 
 data CustomerStore p q a where
   ReadStore :: FilePath -> CustomerStore () () [Customer]

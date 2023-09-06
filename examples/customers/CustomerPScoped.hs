@@ -41,7 +41,7 @@ runCustomerStoreIO ::
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
 runCustomerStoreIO =
-  interpretScoped
+  interpretScopedH
     ( \case
         ReadStore (p :: proxy inp) -> do
           let fp = symbolVal p
@@ -50,15 +50,14 @@ runCustomerStoreIO =
           let fp = symbolVal p
           embed $ writeCustomersIO fp cs
     )
-    ( \k runner -> \case
+    ( \runner -> \case
         WithStore p m -> do
           let fp = symbolVal p
           embed (customersExistIO fp) >>= \case
             False ->
-              runner $ runIKleisliTupled k ()
+              pure ()
             True -> do
-              _a <- runner m
-              runner $ runIKleisliTupled k ()
+              runner m
     )
 
 runCustomerStoreViaState ::
@@ -66,7 +65,7 @@ runCustomerStoreViaState ::
   PrEff f CustomerStore p q a ->
   PrEff f IVoid () () a
 runCustomerStoreViaState =
-  interpretScoped
+  interpretScopedH
     ( \case
         ReadStore (p :: proxy inp) -> do
           let fp = symbolVal p
@@ -77,16 +76,15 @@ runCustomerStoreViaState =
           s <- get
           put (insert fp cs s)
     )
-    ( \k runner -> \case
+    ( \runner -> \case
         WithStore p m -> do
           let fp = symbolVal p
           s <- get @(Map FilePath [Customer])
           case Map.lookup fp s of
             Nothing ->
-              runner $ runIKleisliTupled k ()
+                pure ()
             Just _ -> do
-              _a <- runner m
-              runner $ runIKleisliTupled k ()
+              runner m
     )
 
 processCustomers ::
