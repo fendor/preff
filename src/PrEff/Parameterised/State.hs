@@ -109,10 +109,10 @@ runStateP =
         PutP s' -> pure (s', ())
         GetP -> pure (s, s)
     )
-    ( \k runner s -> \case
+    ( \k run s -> \case
         Zoom f restore m -> Ix.do
-          (x, q) <- runner (f s) m
-          runner (restore q) $ runIKleisliTupled k x
+          (x, q) <- run (f s) m
+          run (restore q) $ runIKleisli k x
     )
 
 -- >>>

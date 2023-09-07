@@ -40,12 +40,12 @@ runStateG :: forall p q s effs ps qs a .
   IProg (StateS s: effs) (StateG s) (p:ps) (q:qs) a ->
   IProg effs IVoid ps qs (s, a)
 runStateG s (Pure a) = I.return (s, a)
-runStateG s (Impure (OHere GetS) k) = runStateG s (runIKleisliTupled k s)
-runStateG _s (Impure (OHere (PutS s')) k) = runStateG s' (runIKleisliTupled k ())
-runStateG s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateG s . runIKleisliTupled k)
+runStateG s (Impure (OHere GetS) k) = runStateG s (runIKleisli k s)
+runStateG _s (Impure (OHere (PutS s')) k) = runStateG s' (runIKleisli k ())
+runStateG s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateG s . runIKleisli k)
 runStateG s (Scope (ModifyG f prog) k) = I.do
   (_s, x) <- runStateG (f s) prog -- :: IProg effs IVoid ps sr2 (s, x)
-  runStateG s (unsafeCoerce runIKleisliTupled k x)
+  runStateG s (unsafeCoerce runIKleisli k x)
  where
 
 runState :: forall p q s effs ps qs a .
@@ -53,9 +53,9 @@ runState :: forall p q s effs ps qs a .
   IProg (StateS s:effs) IVoid (p:ps) (q:qs) a ->
   IProg effs IVoid ps qs (s, a)
 runState s (Pure a) = I.return (s, a)
-runState s (Impure (OHere GetS) k) = runState s (runIKleisliTupled k s)
-runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisliTupled k ())
-runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisliTupled k)
+runState s (Impure (OHere GetS) k) = runState s (runIKleisli k s)
+runState _s (Impure (OHere (PutS s')) k) = runState s' (runIKleisli k ())
+runState s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runState s . runIKleisli k)
 runState _ (Scope _ _) = error "Impossible, Scope node must never be created"
 
 stateExample ::

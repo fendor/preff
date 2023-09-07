@@ -21,15 +21,15 @@ readerExample = Ix.do
 --   PrEff (StateS e: effs) Protocol p q a ->
 --   PrEff effs Protocol p q (e, a)
 -- runStateProt s (Value a) = Ix.return (s, a)
--- runStateProt s (Impure (OHere GetS) k) = runStateProt s (runIKleisliTupled k s)
--- runStateProt _s (Impure (OHere (PutS s')) k) = runStateProt s' (runIKleisliTupled k ())
--- runStateProt s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateProt s . runIKleisliTupled k)
--- runStateProt s (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runStateProt s . runIKleisliTupled k)
+-- runStateProt s (Impure (OHere GetS) k) = runStateProt s (runIKleisli k s)
+-- runStateProt _s (Impure (OHere (PutS s')) k) = runStateProt s' (runIKleisli k ())
+-- runStateProt s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateProt s . runIKleisli k)
+-- runStateProt s (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ runStateProt s . runIKleisli k)
 -- runStateProt s (ScopedP op k) = case op of
 --   LoopCUnbounded m -> Ix.do
 --     aop <- runS s m
 --     ScopedP aop
---       (IKleisliTupled $ \(e, x) -> runStateProt e $ runIKleisliTupled k x)
+--       (IKleisliTupled $ \(e, x) -> runStateProt e $ runIKleisli k x)
 
 --   _ -> undefined
 

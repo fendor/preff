@@ -18,8 +18,8 @@ runReader ::
   IProg (Reader e: effs) IVoid (():p) (():q) a ->
   IProg effs IVoid p q a
 runReader _e (Pure a) = I.return a
-runReader e (Impure (OHere Ask) k) = runReader e (runIKleisliTupled k e)
-runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisliTupled k)
+runReader e (Impure (OHere Ask) k) = runReader e (runIKleisli k e)
+runReader e (Impure (OThere cmd) k) = Impure cmd (IKleisliTupled $ runReader e . runIKleisli k)
 runReader _e (Scope _op _k) = error "This cannot happen"
 
 

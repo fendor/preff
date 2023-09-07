@@ -44,13 +44,13 @@ runSerialArrays (Impure (OThere cmd) k) =
   -- actual:   IProg (IIO : effs) IVoid (u : ps0) (u : qs) a
   --
   -- Maybe we can pass somehow that sr2 ~ (u: ps0)
-  Impure cmd (IKleisliTupled $ \x -> unsafeCoerce runSerialArrays $ runIKleisliTupled k x)
+  Impure cmd (IKleisliTupled $ \x -> unsafeCoerce runSerialArrays $ runIKleisli k x)
 runSerialArrays (Impure (OHere cmd) k) = case cmd of
   Malloc i (a :: b) -> I.do
     let bounds = (0, i - 1)
     arr <- embedIO1 (IO.newArray bounds a :: IO (IO.IOArray Int b))
     let arr' = unsafeCoerce arr :: IO.IOArray Int Any
-    runSerialArrays (runIKleisliTupled k (unsafeCreateA (bounds, arr')))
+    runSerialArrays (runIKleisli k (unsafeCreateA (bounds, arr')))
   Read n i -> I.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -58,7 +58,7 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
       then error $ "Index out of bounds " ++ show (lower, upper)
       else I.do
         v <- embedIO1 $ (IO.readArray (arr :: IO.IOArray Int Any) offset :: IO Any)
-        v `seq` runSerialArrays (runIKleisliTupled k $ unsafeCoerce v)
+        v `seq` runSerialArrays (runIKleisli k $ unsafeCoerce v)
   Write n i (a :: b) -> I.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -66,14 +66,14 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
       then error $ "Index out of bounds " ++ show (lower, upper)
       else I.do
         v <- embedIO1 $ (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a :: IO ())
-        v `seq` runSerialArrays (runIKleisliTupled k ())
+        v `seq` runSerialArrays (runIKleisli k ())
   Length n -> I.do
     let ((lower, upper), _) = unsafeUncoverA n
     if upper - lower + 1 < 0
       then error "Should not be here"
-      else runSerialArrays $ runIKleisliTupled k (upper - lower + 1)
+      else runSerialArrays $ runIKleisli k (upper - lower + 1)
   Join _a _b -> I.do
-    runSerialArrays $ runIKleisliTupled k ()
+    runSerialArrays $ runIKleisli k ()
   Split n i -> I.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -82,7 +82,7 @@ runSerialArrays (Impure (OHere cmd) k) = case cmd of
       else I.do
         let n1 = (lower, offset)
             n2 = (offset + 1, upper)
-        runSerialArrays $ runIKleisliTupled k (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr))
+        runSerialArrays $ runIKleisli k (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr))
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 

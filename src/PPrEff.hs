@@ -38,14 +38,14 @@ instance P.Monad (PrEffP f p p) where
 
 instance IFunctor (PrEffP f) where
   imap f (Pure a) = Pure $ f a
-  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisli k)
+  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisli k)
 
 instance IApplicative (PrEffP f) where
   pure = Pure
   (Pure f) <*> k = P.fmap f k
-  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisli k')
+  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisli k')
 
 instance IMonad (PrEffP f) where
   return :: a -> PrEffP f i i a
@@ -53,8 +53,8 @@ instance IMonad (PrEffP f) where
 
   (>>=) :: PrEffP f i j a -> (a -> PrEffP f j k b) -> PrEffP f i k b
   (Pure a) >>= f = f a
-  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisli k)
+  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisli k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -63,21 +63,21 @@ type family Snd x where
 
 {- | Wrapper type that can carry additional type state.
 
->>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
-runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+>>> :t runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
+runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
             (b :: k3).
      a -> m p q b
 
->>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
-runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
+>>> :t runIKleisli (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
+runIKleisli (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
 -}
 newtype IKleisliTupled m ia ob = IKleisliTupled
-  { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
+  { runIKleisli :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
 
 (|>) :: (IMonad m) => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
-g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
+g |> f = IKleisliTupled $ \i -> runIKleisli g i >>= runIKleisli f
 
 emptyCont :: (IMonad m) => IKleisliTupled m '(p, x) '(p, x)
 emptyCont = IKleisliTupled Ix.return
@@ -86,7 +86,7 @@ transformKleisli ::
   (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2)) ->
   IKleisliTupled m ia ob1 ->
   IKleisliTupled m ia ob2
-transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
+transformKleisli f k = IKleisliTupled $ f . runIKleisli k
 
 -- Less general instance, note the entries sl and sr in the type level list
 
@@ -172,7 +172,7 @@ type ScopedE f m p p' q' q x x' = ScopeE f m p p' q' q x x'
 
 runI2 :: PrEffP IIdentity () () a -> a
 runI2 (Pure a) = a
-runI2 (Impure (IIdentity a) k) = runI2 $ runIKleisliTupled k a
+runI2 (Impure (IIdentity a) k) = runI2 $ runIKleisli k a
 runI2 (Scope _ _) = error "Impossible"
 
 -- ------------------------------------------------
@@ -345,11 +345,11 @@ runStateAI ::
   PrEffP eff sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (PInl Get) k) =
-  runStateAI p (runIKleisliTupled k p)
+  runStateAI p (runIKleisli k p)
 runStateAI _ (Impure (PInl (Put q)) k) =
-  runStateAI q (runIKleisliTupled k ())
+  runStateAI q (runIKleisli k ())
 runStateAI p (Impure (PInr op) k) =
-  Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+  Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisli k x)
 runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
 
 runReaderL ::
@@ -358,9 +358,9 @@ runReaderL ::
   PrEffP eff sr1 sr2 a
 runReaderL _ (Pure x) = Ix.return x
 runReaderL p (Impure (PInl Ask) k) =
-  runReaderL p (runIKleisliTupled k p)
+  runReaderL p (runIKleisli k p)
 runReaderL p (Impure (PInr op) k) =
-  Impure op $ IKleisliTupled $ \x -> runReaderL p (runIKleisliTupled k x)
+  Impure op $ IKleisliTupled $ \x -> runReaderL p (runIKleisli k x)
 runReaderL _p (Scope _ _) = error "GHC is not exhaustive"
 
 data family HList (l :: [Type])
@@ -376,9 +376,9 @@ runInputC l = \case
   Pure x -> Ix.return x
   Impure (PInl Input) k -> case l of
     HCons p r ->
-      runInputC r (runIKleisliTupled k p)
+      runInputC r (runIKleisli k p)
   Impure (PInr op) k ->
-    Impure op $ IKleisliTupled $ \x -> runInputC l (runIKleisliTupled k x)
+    Impure op $ IKleisliTupled $ \x -> runInputC l (runIKleisli k x)
   _ -> error "Don't care for now"
 
 -- foo ::

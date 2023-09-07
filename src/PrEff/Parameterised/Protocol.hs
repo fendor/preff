@@ -223,23 +223,23 @@ connect ::
   PrEff '[] Protocol p2 '[End] b ->
   PrEff '[] IVoid () () (a, b)
 connect (Value x) (Value y) = Ix.return (x, y)
-connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
-connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
+connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
 connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
   (a, b) <- connect act1 act2
-  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
 connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
   (a, b) <- connect act1 act2
-  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
 connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
   (a, b) <- connect act1 act2
-  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
 connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
   (a, b) <- connect act1 act2
-  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
 connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
-  connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
   where
     go (r1, r2) = Ix.do
       (a, b) <- connect act1 act2
@@ -258,23 +258,23 @@ connect' ::
   PrEff effs Protocol p2 '[End] b ->
   PrEff effs IVoid () () (a, b)
 connect' (Value x) (Value y) = Ix.return (x, y)
-connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
-connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
+connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisli k1 ()) (runIKleisli k2 a)
 connect' (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
   (a, b) <- connect' act1 act2
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
 connect' (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
 connect' (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
 connect' (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
 connect' (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
   where
     go (r1, r2) = Ix.do
       (a, b) <- connect' act1 act2
@@ -283,7 +283,7 @@ connect' (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) =
         Just a' -> go (a': r1, b:r2)
 connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
-  connect' (runIKleisliTupled k1 a) (runIKleisliTupled k2 b)
+  connect' (runIKleisli k1 a) (runIKleisli k2 b)
   where
     go (r1, r2) = Ix.do
       (a, b) <- connect' act1 act2
@@ -291,6 +291,6 @@ connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) =
         Nothing -> Ix.return (a:r1, r2)
         Just b' -> go (a: r1, b':r2)
 
-connect' (Impure cmd k1) k2 = Impure cmd $ IKleisliTupled $ \x -> connect' (runIKleisliTupled k1 x) k2
-connect' k1 (Impure cmd k2) = Impure cmd $ IKleisliTupled $ \x -> connect' k1 (runIKleisliTupled  k2 x)
+connect' (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect' (runIKleisli k1 x) k2
+connect' k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect' k1 (runIKleisli  k2 x)
 connect' _ _ = error "Procol.connect: internal tree error"

@@ -136,7 +136,7 @@ runArraysH (ImpureP (Malloc i (a :: b)) c) =
        in Ix.do
             arr <- embedIO $ (IO.newArray bounds a :: IO (IO.IOArray Int b))
             let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
-            runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
+            runArraysH (runIKleisli c (unsafeCreateA (bounds, arr')))
 runArraysH (ImpureP ((Read n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
@@ -144,7 +144,7 @@ runArraysH (ImpureP ((Read n i)) c) =
             then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
             else
               embedIO (IO.readArray (arr :: IO.IOArray Int Any) offset)
-                Ix.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
+                Ix.>>= (\v -> v `seq` runArraysH (runIKleisli c (unsafeCoerce v)))
 runArraysH (ImpureP ((Write n i (a :: b))) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
@@ -152,14 +152,14 @@ runArraysH (ImpureP ((Write n i (a :: b))) c) =
             then error "Index out of bounds"
             else
               embedIO (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a)
-                Ix.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
+                Ix.>>= (\v -> v `seq` runArraysH (runIKleisli c ()))
 runArraysH (ImpureP ((Length n)) c) =
   let ((lower, upper), _arr) = unsafeUncoverA n
    in if upper - lower + 1 < 0
         then error "Should not be here"
-        else runArraysH (runIKleisliTupled c (upper - lower + 1))
+        else runArraysH (runIKleisli c (upper - lower + 1))
 runArraysH (ImpureP ((Join _a _b)) c) =
-  runArraysH (runIKleisliTupled c ())
+  runArraysH (runIKleisli c ())
 runArraysH (ImpureP ((Split n i)) c) =
   let ((lower, upper), arr) = unsafeUncoverA n
    in let offset = i + lower
@@ -168,10 +168,10 @@ runArraysH (ImpureP ((Split n i)) c) =
             else
               let n1 = (lower, offset)
                in let n2 = (offset + 1, upper)
-                   in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
+                   in runArraysH (runIKleisli c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
 runArraysH (ImpureP ((InjectIO a)) c) = Ix.do
   v <- embedIO a
-  runArraysH $ runIKleisliTupled c v
+  runArraysH $ runIKleisli c v
 runArraysH (ScopedP (AFork c) a) = Ix.do
   var <- embedIO newEmptyTMVarIO
 
@@ -179,8 +179,8 @@ runArraysH (ScopedP (AFork c) a) = Ix.do
     Ix.>>= \x ->
       embedIO (atomically $ mapM_ takeTMVar x)
         Ix.>> embedIO (atomically (putTMVar var () {-)-}))
-        Ix.>> runArraysH (runIKleisliTupled a Future)
+        Ix.>> runArraysH (runIKleisli a Future)
         Ix.>>= (\result -> Ix.return (var : result))
 runArraysH (ScopedP (AFinish c) a) =
-  runArraysH c Ix.>>= (embedIO . atomically . mapM_ takeTMVar) Ix.>> runArraysH (runIKleisliTupled a ())
+  runArraysH c Ix.>>= (embedIO . atomically . mapM_ takeTMVar) Ix.>> runArraysH (runIKleisli a ())
 runArraysH _ = undefined

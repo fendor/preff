@@ -92,14 +92,14 @@ runStateDirect ::
   IProg eff IVoid sr1 sr2 (a, q)
 runStateDirect p (Pure x) = Ix.return (x, p)
 runStateDirect p (Impure (OHere GetA) k) =
-  runStateDirect p (runIKleisliTupled k p)
+  runStateDirect p (runIKleisli k p)
 runStateDirect _ (Impure (OHere (PutA q)) k) =
-  runStateDirect q (runIKleisliTupled k ())
+  runStateDirect q (runIKleisli k ())
 runStateDirect p (Impure (OThere op) k) =
-  Impure op $ IKleisliTupled $ \x -> runStateDirect p (runIKleisliTupled k x)
+  Impure op $ IKleisliTupled $ \x -> runStateDirect p (runIKleisli k x)
 runStateDirect p (Scope (LocalAG f m) k) = Ix.do
   (x, _q) <- runStateDirect (f p) m
-  runStateDirect p (runIKleisliTupled k x)
+  runStateDirect p (runIKleisli k x)
 
 runStateAI ::
   p ->
@@ -107,11 +107,11 @@ runStateAI ::
   IProg eff IVoid sr1 sr2 (a, q)
 runStateAI p (Pure x) = Ix.return (x, p)
 runStateAI p (Impure (OHere GetA) k) =
-  runStateAI p (runIKleisliTupled k p)
+  runStateAI p (runIKleisli k p)
 runStateAI _ (Impure (OHere (PutA q)) k) =
-  runStateAI q (runIKleisliTupled k ())
+  runStateAI q (runIKleisli k ())
 runStateAI p (Impure (OThere op) k) =
-  Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisliTupled k x)
+  Impure op $ IKleisliTupled $ \x -> runStateAI p (runIKleisli k x)
 runStateAI _p (Scope _ _) = error "GHC is not exhaustive"
 
 

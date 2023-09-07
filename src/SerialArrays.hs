@@ -16,8 +16,7 @@ import GHC.Types (Any)
 import PrEff.Parameterised.Array hiding (afork, join, length, malloc, read, slice, write)
 import Unsafe.Coerce (unsafeCoerce)
 import PrEff
-import qualified Control.IxMonad as Ix
-import Control.IxMonad
+import Control.IxMonad as Ix
 import Prelude hiding (Monad (..), length, read)
 
 afork a = ScopedP (AFork a) emptyCont
@@ -41,19 +40,13 @@ runSerialArrays ::
 runSerialArrays (Value a) = Ix.return a
 runSerialArrays (ScopedP _ _) = error "Test"
 runSerialArrays (Impure cmd k) =
-  -- unsafeCoerce is currently necessary because GHC fails to unify:
-  --
-  -- expected: PrEff (IIO : effs) IVoid sr2       (u : qs) a
-  -- actual:   PrEff (IIO : effs) IVoid (u : ps0) (u : qs) a
-  --
-  -- Maybe we can pass somehow that sr2 ~ (u: ps0)
-  Impure cmd (IKleisliTupled $ \x -> runSerialArrays $ runIKleisliTupled k x)
+  Impure cmd (iKleisli $ \x -> runSerialArrays $ runIKleisli k x)
 runSerialArrays (ImpureP cmd k) = case cmd of
   Malloc i (a :: b) -> Ix.do
     let bounds = (0, i - 1)
     arr <- embedIO (IO.newArray bounds a :: IO (IO.IOArray Int b))
     let arr' = unsafeCoerce arr :: IO.IOArray Int Any
-    runSerialArrays (runIKleisliTupled k (unsafeCreateA (bounds, arr')))
+    runSerialArrays (runIKleisli k (unsafeCreateA (bounds, arr')))
   Read n i -> Ix.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -61,7 +54,7 @@ runSerialArrays (ImpureP cmd k) = case cmd of
       then error $ "Index out of bounds " ++ show (lower, upper)
       else Ix.do
         v <- embedIO $ (IO.readArray (arr :: IO.IOArray Int Any) offset :: IO Any)
-        v `seq` runSerialArrays (runIKleisliTupled k $ unsafeCoerce v)
+        v `seq` runSerialArrays (runIKleisli k $ unsafeCoerce v)
   Write n i (a :: b) -> Ix.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -69,14 +62,14 @@ runSerialArrays (ImpureP cmd k) = case cmd of
       then error $ "Index out of bounds " ++ show (lower, upper)
       else Ix.do
         v <- embedIO $ (IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a :: IO ())
-        v `seq` runSerialArrays (runIKleisliTupled k ())
+        v `seq` runSerialArrays (runIKleisli k ())
   Length n -> Ix.do
     let ((lower, upper), _) = unsafeUncoverA n
     if upper - lower + 1 < 0
       then error "Should not be here"
-      else runSerialArrays $ runIKleisliTupled k (upper - lower + 1)
+      else runSerialArrays $ runIKleisli k (upper - lower + 1)
   Join _a _b -> Ix.do
-    runSerialArrays $ runIKleisliTupled k ()
+    runSerialArrays $ runIKleisli k ()
   Split n i -> Ix.do
     let ((lower, upper), arr) = unsafeUncoverA n
         offset = i + lower
@@ -85,7 +78,7 @@ runSerialArrays (ImpureP cmd k) = case cmd of
       else Ix.do
         let n1 = (lower, offset)
             n2 = (offset + 1, upper)
-        runSerialArrays $ runIKleisliTupled k (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr))
+        runSerialArrays $ runIKleisli k (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr))
   Wait _ -> error "Wait has no point, atm"
   InjectIO _ -> error "Don't use injectIO!"
 

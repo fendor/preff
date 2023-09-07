@@ -52,18 +52,18 @@ data PrEff f s p q a where
   Value :: a -> PrEff f s p p a
   Impure ::
     Op f x ->
-    IKleisliTupled (PrEff f s) '(p, x) '(r, a) ->
+    IKleisliTupled (PrEff f s) p r x a ->
     PrEff f s p r a
   ImpureP ::
     s p q x ->
     -- PrEff f s p' q' x ->
-    IKleisliTupled (PrEff f s) '(q, x) '(r, a) ->
+    IKleisliTupled (PrEff f s) q r x a ->
     -- (x' -> PrEff f s q r a) ->
     PrEff f s p r a
   ScopedP ::
     ScopedE s (PrEff f s) p p' q' q x x' ->
     -- PrEff f s p' q' x ->
-    IKleisliTupled (PrEff f s) '(q, x') '(r, a) ->
+    IKleisliTupled (PrEff f s) q r  x' a ->
     -- (x' -> PrEff f s q r a) ->
     PrEff f s p r a
 
@@ -79,16 +79,16 @@ instance P.Monad (PrEff effs f p p) where
 
 instance IFunctor (PrEff effs f) where
   imap f (Value a) = Value $ f a
-  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ImpureP op k) = ImpureP op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (ScopedP op k) = ScopedP op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (Impure op k) = Impure op (iKleisli $ imap f . runIKleisli k)
+  imap f (ImpureP op k) = ImpureP op (iKleisli $ imap f . runIKleisli k)
+  imap f (ScopedP op k) = ScopedP op (iKleisli $ imap f . runIKleisli k)
 
 instance IApplicative (PrEff effs f) where
   pure = Value
   (Value f) <*> k = fmap f k
-  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  (ImpureP fop k') <*> k = ImpureP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  ScopedP fop k' <*> k = ScopedP fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (Impure fop k') <*> k = Impure fop (iKleisli $ (<*> k) . runIKleisli k')
+  (ImpureP fop k') <*> k = ImpureP fop (iKleisli $ (<*> k) . runIKleisli k')
+  ScopedP fop k' <*> k = ScopedP fop (iKleisli $ (<*> k) . runIKleisli k')
 
 instance IMonad (PrEff effs f) where
   return :: a -> PrEff effs f i i a
@@ -96,9 +96,9 @@ instance IMonad (PrEff effs f) where
 
   (>>=) :: PrEff effs f i j a -> (a -> PrEff effs f j k b) -> PrEff effs f i k b
   (Value a) >>= f = f a
-  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ImpureP o k) >>= f = ImpureP o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (ScopedP g k) >>= f = ScopedP g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (Impure o k) >>= f = Impure o $ (iKleisli $ (>>= f) . runIKleisli k)
+  (ImpureP o k) >>= f = ImpureP o $ (iKleisli $ (>>= f) . runIKleisli k)
+  (ScopedP g k) >>= f = ScopedP g (iKleisli $ (>>= f) . runIKleisli k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -108,33 +108,38 @@ type family Snd x where
 
 {- | Wrapper type that can carry additional type state.
 
->>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
-runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+>>> :t runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
+runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
   :: forall {k1} {k2} {k3} {p :: k1} {a} {m :: k1 -> k2 -> k3 -> *}
             {q :: k2} {b :: k3}.
      a -> m p q b
 
->>> :t runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
-runIKleisliTupled (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+>>> :t runIKleisli (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
+runIKleisli (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
   :: forall {k2} {p :: k2} {a} {f :: [* -> *]}
             {s :: k2 -> k2 -> * -> *} {q :: k2} {b}.
      a -> PrEff f s p q b
 -}
-newtype IKleisliTupled m ia ob = IKleisliTupled
-  { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
-  }
+-- newtype IKleisliTupled m ia ob = IKleisliTupled
+--   { runIKleisli :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
+--   }
 
-(|>) :: (IMonad m) => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
-g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
+type IKleisliTupled m i o a b = a -> m i o b
 
-emptyCont :: (IMonad m) => IKleisliTupled m '(p, x) '(p, x)
-emptyCont = IKleisliTupled Ix.pure
+iKleisli :: (a -> m i o b) -> IKleisliTupled m i o a b
+iKleisli = id
+
+runIKleisli :: IKleisliTupled m i o a b -> (a -> m i o b)
+runIKleisli = id
+
+emptyCont :: (IMonad m) => IKleisliTupled m p p x x
+emptyCont = iKleisli Ix.pure
 
 transformKleisli ::
-  (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2)) ->
-  IKleisliTupled m ia ob1 ->
-  IKleisliTupled m ia ob2
-transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
+  (m i o b1 -> m i o b2) ->
+  IKleisliTupled m i o a b1 ->
+  IKleisliTupled m i o a b2
+transformKleisli f k = iKleisli $ f . runIKleisli k
 
 -- ------------------------------------------------
 -- Scoped Algebras
@@ -184,7 +189,7 @@ sendScoped g = ScopedP g emptyCont
 
 fold :: (forall x. Op f x -> x) -> (a -> b) -> PrEff f IVoid p q a -> b
 fold alg gen (Value a) = gen a
-fold alg gen (Impure op k) = fold alg gen (runIKleisliTupled k (alg op))
+fold alg gen (Impure op k) = fold alg gen (runIKleisli k (alg op))
 fold alg gen _ = undefined
 
 foldP ::
@@ -197,16 +202,16 @@ foldP ::
 foldP algP algScoped alg gen (Value a) =
   gen a
 foldP algP algScoped alg gen (Impure op k) =
-  foldP algP algScoped alg gen (runIKleisliTupled k (alg op))
+  foldP algP algScoped alg gen (runIKleisli k (alg op))
 foldP algP algScoped alg gen (ImpureP op k) =
-  foldP algP algScoped alg gen (runIKleisliTupled k (algP op))
+  foldP algP algScoped alg gen (runIKleisli k (algP op))
 foldP algP algScoped alg gen (ScopedP op k) =
-  foldP algP algScoped alg gen (runIKleisliTupled k (algScoped op))
+  foldP algP algScoped alg gen (runIKleisli k (algScoped op))
 
 handleEff :: Alg f -> Gen a b -> PrEff (f : eff) IVoid p q a -> PrEff eff IVoid p q b
 handleEff alg gen (Value a) = pure $ gen a
-handleEff alg gen (Impure (OHere op) k) = handleEff alg gen (runIKleisliTupled k (alg op))
-handleEff alg gen (Impure (OThere op) k) = Impure op (IKleisliTupled $ \x -> handleEff alg gen $ runIKleisliTupled k x)
+handleEff alg gen (Impure (OHere op) k) = handleEff alg gen (runIKleisli k (alg op))
+handleEff alg gen (Impure (OThere op) k) = Impure op (iKleisli $ \x -> handleEff alg gen $ runIKleisli k x)
 handleEff alg gen (ImpureP op k) = error "Impossible"
 handleEff alg gen (ScopedP op k) = error "Impossible"
 
@@ -230,15 +235,15 @@ interpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
     x <- handler op
-    interpret handler (runIKleisliTupled k x)
+    interpret handler (runIKleisli k x)
   Impure (OThere op) k ->
-    Impure op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
+    Impure op (iKleisli $ \x -> interpret handler (runIKleisli k x))
   ImpureP op k ->
-    ImpureP op (IKleisliTupled $ \x -> interpret handler (runIKleisliTupled k x))
+    ImpureP op (iKleisli $ \x -> interpret handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ interpret handler m) op)
-      (IKleisliTupled $ \(_, x) -> interpret handler (runIKleisliTupled k x))
+      (iKleisli $ \(_, x) -> interpret handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
 
@@ -247,15 +252,15 @@ reinterpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
     x <- handler op
-    reinterpret handler (runIKleisliTupled k x)
+    reinterpret handler (runIKleisli k x)
   Impure (OThere op) k ->
-    Impure (weaken op) (IKleisliTupled $ \x -> reinterpret handler (runIKleisliTupled k x))
+    Impure (weaken op) (iKleisli $ \x -> reinterpret handler (runIKleisli k x))
   ImpureP op k ->
-    ImpureP op (IKleisliTupled $ \x -> reinterpret handler (runIKleisliTupled k x))
+    ImpureP op (iKleisli $ \x -> reinterpret handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
-      (IKleisliTupled $ \(_, x) -> reinterpret handler (runIKleisliTupled k x))
+      (iKleisli $ \(_, x) -> reinterpret handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
 
@@ -264,15 +269,15 @@ reinterpret2 handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
     x <- handler op
-    reinterpret2 handler (runIKleisliTupled k x)
+    reinterpret2 handler (runIKleisli k x)
   Impure (OThere op) k ->
-    Impure (weaken $ weaken op) (IKleisliTupled $ \x -> reinterpret2 handler (runIKleisliTupled k x))
+    Impure (weaken $ weaken op) (iKleisli $ \x -> reinterpret2 handler (runIKleisli k x))
   ImpureP op k ->
-    ImpureP op (IKleisliTupled $ \x -> reinterpret2 handler (runIKleisliTupled k x))
+    ImpureP op (iKleisli $ \x -> reinterpret2 handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
       (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
-      (IKleisliTupled $ \(_, x) -> reinterpret2 handler (runIKleisliTupled k x))
+      (iKleisli $ \(_, x) -> reinterpret2 handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
 
@@ -285,9 +290,9 @@ interpretStateful ::
 interpretStateful !s _hdl (Value a) = Ix.return (s, a)
 interpretStateful !s handler (Impure (OHere op) k) = Ix.do
   (newS, x) <- handler s op
-  interpretStateful newS handler (runIKleisliTupled k x)
-interpretStateful !s hdl (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (interpretStateful s hdl . runIKleisliTupled k)
-interpretStateful !s hdl (ImpureP cmd k) = ImpureP cmd (IKleisliTupled $ interpretStateful s hdl . runIKleisliTupled k)
+  interpretStateful newS handler (runIKleisli k x)
+interpretStateful !s hdl (Impure (OThere cmd) k) = Impure cmd $ iKleisli (interpretStateful s hdl . runIKleisli k)
+interpretStateful !s hdl (ImpureP cmd k) = ImpureP cmd (iKleisli $ interpretStateful s hdl . runIKleisli k)
 interpretStateful !s hdl (ScopedP op k) =
   ScopedP
     ( weave
@@ -298,7 +303,7 @@ interpretStateful !s hdl (ScopedP op k) =
         )
         op
     )
-    (IKleisliTupled $ \(s', a) -> interpretStateful s' hdl $ runIKleisliTupled k a)
+    (iKleisli $ \(s', a) -> interpretStateful s' hdl $ runIKleisli k a)
 
 type RunnerS f m =
   forall u v x. u -> m u v x -> PrEff f IVoid () () (x, v)
@@ -315,7 +320,15 @@ type BaseAlg f s =
 type ScopedAlgS f s =
   forall m p p' q' q x' x a.
   (m ~ PrEff f s) =>
-  (forall r. IKleisliTupled m '(q, x) '(r, a)) ->
+  (forall r . IKleisliTupled m q r x a) ->
+  RunnerS f m ->
+  p ->
+  ScopedE s m p p' q' q x' x ->
+  PrEff f IVoid () () (a, q)
+
+type ScopedAlgS' f s =
+  forall m p p' q' q x' x a.
+  (m ~ PrEff f s) =>
   RunnerS f m ->
   p ->
   ScopedE s m p p' q' q x' x ->
@@ -324,7 +337,7 @@ type ScopedAlgS f s =
 type ScopedAlg f s =
   forall m p p' q' q x' x a r.
   (m ~ PrEff f s) =>
-  IKleisliTupled m '(q, x) '(r, a) ->
+  IKleisliTupled m q r x a ->
   Runner f m ->
   ScopedE s m p p' q' q x' x ->
   PrEff f IVoid () () a
@@ -346,13 +359,32 @@ interpretStatefulScoped ::
 interpretStatefulScoped alg salg p (Value x) = Ix.return (x, p)
 interpretStatefulScoped alg salg p (Impure cmd k) =
   Impure cmd
-    $ IKleisliTupled
-    $ \x -> interpretStatefulScoped alg salg p $ runIKleisliTupled k x
+    $ iKleisli
+    $ \x -> interpretStatefulScoped alg salg p $ runIKleisli k x
 interpretStatefulScoped alg salg p (ImpureP op k) = Ix.do
   (q, a) <- alg p op
-  interpretStatefulScoped alg salg q (runIKleisliTupled k a)
+  interpretStatefulScoped alg salg q (runIKleisli k a)
 interpretStatefulScoped alg salg p (ScopedP op k) =
   salg (unsafeCoerce k) (interpretStatefulScoped alg salg) p (unsafeCoerce op)
+
+interpretStatefulScopedH ::
+  forall p f s q a.
+  BaseAlgS f s ->
+  ScopedAlgS' f s ->
+  p ->
+  PrEff f s p q a ->
+  PrEff f IVoid () () (a, q)
+interpretStatefulScopedH alg salg p (Value x) = Ix.return (x, p)
+interpretStatefulScopedH alg salg p (Impure cmd k) =
+  Impure cmd
+    $ iKleisli
+    $ \x -> interpretStatefulScopedH alg salg p $ runIKleisli k x
+interpretStatefulScopedH alg salg p (ImpureP op k) = Ix.do
+  (q, a) <- alg p op
+  interpretStatefulScopedH alg salg q (runIKleisli k a)
+interpretStatefulScopedH alg salg p (ScopedP op k) = Ix.do
+  (r, newS) <- salg (interpretStatefulScopedH alg salg) p op
+  interpretStatefulScopedH alg salg newS (runIKleisli k r)
 
 interpretScoped ::
   forall p f s q a.
@@ -363,11 +395,11 @@ interpretScoped ::
 interpretScoped alg salg (Value x) = Ix.return x
 interpretScoped alg salg (Impure cmd k) =
   Impure cmd
-    $ IKleisliTupled
-    $ \x -> interpretScoped alg salg $ runIKleisliTupled k x
+    $ iKleisli
+    $ \x -> interpretScoped alg salg $ runIKleisli k x
 interpretScoped alg salg (ImpureP op k) = Ix.do
   a <- alg op
-  interpretScoped alg salg (runIKleisliTupled k a)
+  interpretScoped alg salg (runIKleisli k a)
 interpretScoped alg salg (ScopedP op k) =
   salg k (interpretScoped alg salg) op
 
@@ -380,14 +412,14 @@ interpretScopedH ::
 interpretScopedH alg salg (Value x) = Ix.return x
 interpretScopedH alg salg (Impure cmd k) =
   Impure cmd
-    $ IKleisliTupled
-    $ \x -> interpretScopedH alg salg $ runIKleisliTupled k x
+    $ iKleisli
+    $ \x -> interpretScopedH alg salg $ runIKleisli k x
 interpretScopedH alg salg (ImpureP op k) = Ix.do
   a <- alg op
-  interpretScopedH alg salg (runIKleisliTupled k a)
+  interpretScopedH alg salg (runIKleisli k a)
 interpretScopedH alg salg (ScopedP op k) = Ix.do
   r <- salg (interpretScopedH alg salg) op
-  interpretScopedH alg salg $ runIKleisliTupled k r
+  interpretScopedH alg salg $ runIKleisli k r
 
 
 -- runStateDirect ::
@@ -397,14 +429,14 @@ interpretScopedH alg salg (ScopedP op k) = Ix.do
 -- runStateDirect p (Value x) = Ix.return (x, p)
 -- runStateDirect p (Impure cmd k) =
 --   Impure cmd $
---     IKleisliTupled $ \x -> runStateDirect p $ runIKleisliTupled k x
+--     IKleisliTupled $ \x -> runStateDirect p $ runIKleisli k x
 -- runStateDirect p (ImpureP GetP k) =
---   runStateDirect p (runIKleisliTupled k p)
+--   runStateDirect p (runIKleisli k p)
 -- runStateDirect _ (ImpureP (PutP q) k) =
---   runStateDirect q (runIKleisliTupled k ())
+--   runStateDirect q (runIKleisli k ())
 -- runStateDirect p (ScopedP (ModifyP f m) k) = Ix.do
 --   (x, _q) <- runStateDirect (f p) m
---   runStateDirect p (runIKleisliTupled k x)
+--   runStateDirect p (runIKleisli k x)
 
 {- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
 more summand.
@@ -448,7 +480,7 @@ runIO :: PrEff '[Embed IO] IVoid p q a -> IO a
 runIO (Value a) = P.pure a
 runIO (Impure (OHere (Embed a)) k) = do
   x <- a
-  runIO $ runIKleisliTupled k x
+  runIO $ runIKleisli k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureP _cmd _k) = error "Impossible"
 runIO (ScopedP _ _) = error "Impossible"
@@ -461,9 +493,9 @@ runEmbed ::
 runEmbed handle (Value a) = P.pure $ P.pure a
 runEmbed handle (Impure (OHere (Embed m)) k) = Ix.do
   x <- handle m
-  runEmbed handle $ runIKleisliTupled k x
+  runEmbed handle $ runIKleisli k x
 runEmbed handle (Impure (OThere _) _k) = error "Impossible"
-runEmbed handle (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisliTupled k (runIIdentity cmd)
+runEmbed handle (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisli k (runIIdentity cmd)
 runEmbed handle (ScopedP _ _) = error "Impossible"
 
 embedIO :: (Member (Embed IO) effs) => IO a -> PrEff effs f p p a

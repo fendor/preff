@@ -136,7 +136,7 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 --        in (IO.newArray bounds a :: IO (IO.IOArray Int b))
 --             P.>>= ( \arr ->
 --                       let arr' = (unsafeCoerce arr :: IO.IOArray Int Any)
---                        in runArraysH (runIKleisliTupled c (unsafeCreateA (bounds, arr')))
+--                        in runArraysH (runIKleisli c (unsafeCreateA (bounds, arr')))
 --                   )
 -- runArraysH (Impure (OHere (Read n i)) c) =
 --   let ((lower, upper), arr) = unsafeUncoverA n
@@ -145,7 +145,7 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 --             then error $ "Index out of bounds " ++ show (lower, upper) ++ " " ++ show i
 --             else
 --               IO.readArray (arr :: IO.IOArray Int Any) offset
---                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c (unsafeCoerce v)))
+--                 P.>>= (\v -> v `seq` runArraysH (runIKleisli c (unsafeCoerce v)))
 -- runArraysH (Impure (OHere (Write n i (a :: b))) c) =
 --   let ((lower, upper), arr) = unsafeUncoverA n
 --    in let offset = i + lower
@@ -153,14 +153,14 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 --             then error "Index out of bounds"
 --             else
 --               IO.writeArray (unsafeCoerce arr :: IO.IOArray Int b) offset a
---                 P.>>= (\v -> v `seq` runArraysH (runIKleisliTupled c ()))
+--                 P.>>= (\v -> v `seq` runArraysH (runIKleisli c ()))
 -- runArraysH (Impure (OHere (Length n)) c) =
 --   let ((lower, upper), _arr) = unsafeUncoverA n
 --    in if upper - lower + 1 < 0
 --         then error "Should not be here"
---         else runArraysH (runIKleisliTupled c (upper - lower + 1))
+--         else runArraysH (runIKleisli c (upper - lower + 1))
 -- runArraysH (Impure (OHere (Join _a _b)) c) =
---   runArraysH (runIKleisliTupled c ())
+--   runArraysH (runIKleisli c ())
 -- runArraysH (Impure (OHere (Split n i)) c) =
 --   let ((lower, upper), arr) = unsafeUncoverA n
 --    in let offset = i + lower
@@ -169,18 +169,18 @@ unsafeUncoverA = unsafeUncover @(Bounds, IO.IOArray Int Any)
 --             else
 --               let n1 = (lower, offset)
 --                in let n2 = (offset + 1, upper)
---                    in runArraysH (runIKleisliTupled c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
+--                    in runArraysH (runIKleisli c (unsafeCreateA (n1, arr), unsafeCreateA (n2, arr)))
 -- runArraysH (Impure (OHere (InjectIO a)) c) =
---   a P.>>= (runArraysH . runIKleisliTupled c)
+--   a P.>>= (runArraysH . runIKleisli c)
 -- runArraysH (Scope (AFork c) a) =
 --   newEmptyTMVarIO
 --     P.>>= ( \var {-forkIO ( -} ->
 --               runArraysH c
 --                 P.>>= (atomically . mapM_ takeTMVar)
 --                   P.>> atomically (putTMVar var () {-)-})
---                   P.>> runArraysH (runIKleisliTupled a Future)
+--                   P.>> runArraysH (runIKleisli a Future)
 --                 P.>>= (\result -> P.return (var : result))
 --           )
 -- runArraysH (Scope (AFinish c) a) =
---   runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisliTupled a ())
+--   runArraysH c P.>>= (atomically . mapM_ takeTMVar) P.>> runArraysH (runIKleisli a ())
 -- runArraysH _ = undefined

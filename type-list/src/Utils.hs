@@ -45,19 +45,19 @@ data IProg f g p q a where
 
 instance Functor (IProg f g p q) where
   fmap f (Pure a) = Pure $ f a
-  fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisliTupled k)
-  fmap f (Scope op k) = Scope op (IKleisliTupled $ fmap f . runIKleisliTupled k)
+  fmap f (Impure op k) = Impure op (IKleisliTupled $ fmap f . runIKleisli k)
+  fmap f (Scope op k) = Scope op (IKleisliTupled $ fmap f . runIKleisli k)
 
 instance IFunctor (IProg f g) where
   imap f (Pure a) = Pure $ f a
-  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisliTupled k)
-  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisliTupled k)
+  imap f (Impure op k) = Impure op (IKleisliTupled $ imap f . runIKleisli k)
+  imap f (Scope op k) = Scope op (IKleisliTupled $ imap f . runIKleisli k)
 
 instance IApplicative (IProg f g) where
   pure = Pure
   (Pure f) <*> k = fmap f k
-  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
-  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisliTupled k')
+  (Impure fop k') <*> k = Impure fop (IKleisliTupled $ (<*> k) . runIKleisli k')
+  Scope fop k' <*> k = Scope fop (IKleisliTupled $ (<*> k) . runIKleisli k')
 
 instance IMonad (IProg f g) where
   return :: a -> IProg f g i i a
@@ -65,8 +65,8 @@ instance IMonad (IProg f g) where
 
   (>>=) :: IProg f g i j a -> (a -> IProg f g j k b) -> IProg f g i k b
   (Pure a) >>= f = f a
-  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
-  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisliTupled k)
+  (Impure o k) >>= f = Impure o $ (IKleisliTupled $ (>>= f) . runIKleisli k)
+  (Scope g k) >>= f = Scope g (IKleisliTupled $ (>>= f) . runIKleisli k)
 
 type family Fst x where
   Fst '(a, b) = a
@@ -75,20 +75,20 @@ type family Snd x where
 
 -- | Wrapper type that can carry additional type state.
 --
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled m '(p, a) '(q, b))
+-- >>> :t runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
+-- runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
 --   :: forall k1 k2 k3 (p :: k1) a (m :: k1 -> k2 -> k3 -> *) (q :: k2)
 --             (b :: k3).
 --      a -> m p q b
 --
--- >>> :t runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
--- runIKleisliTupled (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
+-- >>> :t runIKleisli (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b))
+-- runIKleisli (undefined :: IKleisliTupled (Sem f) '(p, a) '(q, b)) :: forall k p a (f :: [k -> k -> * -> *]) q b. a -> Sem f p q b
 newtype IKleisliTupled m ia ob = IKleisliTupled
-  { runIKleisliTupled :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
+  { runIKleisli :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
   }
 
 (|>) :: IMonad m => IKleisliTupled m i o -> IKleisliTupled m o o2 -> IKleisliTupled m i o2
-g |> f = IKleisliTupled $ \i -> runIKleisliTupled g i >>= runIKleisliTupled f
+g |> f = IKleisliTupled $ \i -> runIKleisli g i >>= runIKleisli f
 
 pure :: IMonad m => IKleisliTupled m '(p, x) '(p, x)
 pure = IKleisliTupled Utils.return
@@ -97,7 +97,7 @@ transformKleisli ::
   (m (Fst ia) (Fst ob1) (Snd ob1) -> m (Fst ia) (Fst ob2) (Snd ob2))
   -> IKleisliTupled m ia ob1
   -> IKleisliTupled m ia ob2
-transformKleisli f k = IKleisliTupled $ f . runIKleisliTupled k
+transformKleisli f k = IKleisliTupled $ f . runIKleisli k
 
 -- Less general instance, note the entries sl and sr in the type level list
 type Op :: forall k.
@@ -143,7 +143,7 @@ data IVoid m p p' q' q x x'
 
 runI :: IProg '[IIdentity] IVoid '[()] '[()] a -> a
 runI (Pure a) = a
-runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisliTupled k (runIdentity cmd)
+runI (Impure (OHere cmd) k) = runI $ unsafeCoerce runIKleisli k (runIdentity cmd)
 runI (Impure (OThere _) _k) = error "Impossible"
 runI (Scope _ _) = error "Impossible"
 
@@ -167,7 +167,7 @@ data IIO p q a where
 
 runIO :: IProg '[IIO] IVoid p q a -> IO a
 runIO (Pure a) = P.pure a
-runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisliTupled k x
+runIO (Impure (OHere (RunIO a)) k) = a P.>>= \x ->runIO $ runIKleisli k x
 runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (Scope _ _) = error "Impossible"
 

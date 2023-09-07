@@ -55,7 +55,7 @@ scopedAlg :: ScopedAlgS f ReaderP
 scopedAlg k runner s = \case
   Local f m -> Ix.do
     (x, _q) <- runner (f s) m
-    runner s (runIKleisliTupled k x)
+    runner s (runIKleisli k x)
 
 example :: Member (Writer [String]) f => PrEff f ReaderP Int Int String
 example = Ix.do

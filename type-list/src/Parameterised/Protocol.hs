@@ -114,28 +114,28 @@ connect :: forall p1 p2 srp1 srp2 srq1 srq2 a b.
   IProg [Protocol, IIdentity] ProtocolG (p2: srp2) (End : srq2) b ->
   (a, b)
 connect (Pure x) (Pure y) = (x, y)
-connect (Impure (OHere Recv) k1)     (Impure (OHere (Send a)) k2) = connect (runIKleisliTupled k1 a) (runIKleisliTupled k2 ())
-connect (Impure (OHere (Send a)) k1) (Impure (OHere Recv) k2) = connect (runIKleisliTupled k1 ()) (runIKleisliTupled k2 a)
+connect (Impure (OHere Recv) k1)     (Impure (OHere (Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
+connect (Impure (OHere (Send a)) k1) (Impure (OHere Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
 connect (Impure (OHere Sel1) k1)     (Scope (Offer act _) k2) =
   connect act1 act2
   where
-    act1 = runIKleisliTupled k1 ()
+    act1 = runIKleisli k1 ()
     act2 = unsafeCoerce act
 connect (Impure (OHere Sel2) k1)     (Scope (Offer act _) k2) =
   connect act1 act2
   where
-    act1 = runIKleisliTupled k1 ()
+    act1 = runIKleisli k1 ()
     act2 = unsafeCoerce act
 connect (Scope (Offer act _) k1)    (Impure (OHere Sel1) k2) =
   connect act1 act2
   where
     act1 = unsafeCoerce act
-    act2 = runIKleisliTupled k2 ()
+    act2 = runIKleisli k2 ()
 connect (Scope (Offer _ act) k1)    (Impure (OHere Sel2) k2) =
   connect act1 act2
   where
     act1 = unsafeCoerce act
-    act2 = runIKleisliTupled k2 ()
+    act2 = runIKleisli k2 ()
 connect (Pure _) (Impure _ _) = error "Procol.connect: internal tree error"
 connect (Pure _) (Scope _ _) = error "Procol.connect: internal tree error"
 connect (Impure (OThere _) _) _ = error "Procol.connect: internal tree error"
