@@ -63,38 +63,36 @@ data PrEff f s p q a where
     IKleisli (PrEff f s) q r  x' a ->
     PrEff f s p r a
 
-instance Functor (PrEff effs f p q) where
+instance Functor (PrEff f s p q) where
   fmap = Ix.imap
 
-instance P.Applicative (PrEff effs f p p) where
+instance P.Applicative (PrEff f s p p) where
   pure = Ix.pure
   f <*> x = f Ix.<*> x
 
-instance P.Monad (PrEff effs f p p) where
+instance P.Monad (PrEff f s p p) where
   a >>= f = a Ix.>>= f
 
-instance IFunctor (PrEff effs f) where
-  imap f (Value a) = Value $ f a
-  imap f (Impure op k) = Impure op (iKleisli $ imap f . runIKleisli k)
-  imap f (ImpureP op k) = ImpureP op (iKleisli $ imap f . runIKleisli k)
-  imap f (ScopedP op k) = ScopedP op (iKleisli $ imap f . runIKleisli k)
+instance IFunctor (PrEff f s) where
+  imap f (Value a)      = Value $ f a
+  imap f (Impure op k)  = Impure  op (imap f . k)
+  imap f (ImpureP op k) = ImpureP op (imap f . k)
+  imap f (ScopedP op k) = ScopedP op (imap f . k)
 
-instance IApplicative (PrEff effs f) where
+instance IApplicative (PrEff f s) where
   pure = Value
-  (Value f) <*> k = fmap f k
-  (Impure fop k') <*> k = Impure fop (iKleisli $ (<*> k) . runIKleisli k')
-  (ImpureP fop k') <*> k = ImpureP fop (iKleisli $ (<*> k) . runIKleisli k')
-  ScopedP fop k' <*> k = ScopedP fop (iKleisli $ (<*> k) . runIKleisli k')
+  Value k      <*> f = imap k f
+  Impure  op k <*> f = Impure  op ((<*> f) . k)
+  ImpureP op k <*> f = ImpureP op ((<*> f) . k)
+  ScopedP op k <*> f = ScopedP op ((<*> f) . k)
 
-instance IMonad (PrEff effs f) where
-  return :: a -> PrEff effs f i i a
-  return = Value
+instance IMonad (PrEff f s) where
+  return = pure
 
-  (>>=) :: PrEff effs f i j a -> (a -> PrEff effs f j k b) -> PrEff effs f i k b
-  (Value a) >>= f = f a
-  (Impure o k) >>= f = Impure o $ (iKleisli $ (>>= f) . runIKleisli k)
-  (ImpureP o k) >>= f = ImpureP o $ (iKleisli $ (>>= f) . runIKleisli k)
-  (ScopedP g k) >>= f = ScopedP g (iKleisli $ (>>= f) . runIKleisli k)
+  Value a      >>= f = f a
+  Impure  op k >>= f = Impure  op ((>>= f) . k)
+  ImpureP op k >>= f = ImpureP op ((>>= f) . k)
+  ScopedP op k >>= f = ScopedP op ((>>= f) . k)
 
 type family Fst x where
   Fst '(a, b) = a
