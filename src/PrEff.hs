@@ -52,19 +52,15 @@ data PrEff f s p q a where
   Value :: a -> PrEff f s p p a
   Impure ::
     Op f x ->
-    IKleisliTupled (PrEff f s) p r x a ->
+    IKleisli (PrEff f s) p r x a ->
     PrEff f s p r a
   ImpureP ::
     s p q x ->
-    -- PrEff f s p' q' x ->
-    IKleisliTupled (PrEff f s) q r x a ->
-    -- (x' -> PrEff f s q r a) ->
+    IKleisli (PrEff f s) q r x a ->
     PrEff f s p r a
   ScopedP ::
-    ScopedE s (PrEff f s) p p' q' q x x' ->
-    -- PrEff f s p' q' x ->
-    IKleisliTupled (PrEff f s) q r  x' a ->
-    -- (x' -> PrEff f s q r a) ->
+    ScopeE s (PrEff f s) p p' q' q x x' ->
+    IKleisli (PrEff f s) q r  x' a ->
     PrEff f s p r a
 
 instance Functor (PrEff effs f p q) where
@@ -124,21 +120,21 @@ runIKleisli (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
 --   { runIKleisli :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
 --   }
 
-type IKleisliTupled m i o a b = a -> m i o b
+type IKleisli m i o a b = a -> m i o b
 
-iKleisli :: (a -> m i o b) -> IKleisliTupled m i o a b
+iKleisli :: (a -> m i o b) -> IKleisli m i o a b
 iKleisli = id
 
-runIKleisli :: IKleisliTupled m i o a b -> (a -> m i o b)
+runIKleisli :: IKleisli m i o a b -> (a -> m i o b)
 runIKleisli = id
 
-emptyCont :: (IMonad m) => IKleisliTupled m p p x x
+emptyCont :: (IMonad m) => IKleisli m p p x x
 emptyCont = iKleisli Ix.pure
 
 transformKleisli ::
   (m i o b1 -> m i o b2) ->
-  IKleisliTupled m i o a b1 ->
-  IKleisliTupled m i o a b2
+  IKleisli m i o a b1 ->
+  IKleisli m i o a b2
 transformKleisli f k = iKleisli $ f . runIKleisli k
 
 -- ------------------------------------------------
@@ -147,8 +143,6 @@ transformKleisli f k = iKleisli $ f . runIKleisli k
 
 type ScopeE :: forall k. (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
 data family ScopeE s
-
-type ScopedE s m p p' q' q x x' = ScopeE s m p p' q' q x x'
 
 type HandlerS c m n = forall r u v. c (m u v r) -> n u v (c r)
 
@@ -166,8 +160,8 @@ weave ::
   (ScopedEffect s, Functor c) =>
   c () ->
   HandlerS c m n ->
-  ScopedE s m p p' q' q x x' ->
-  ScopedE s n p p' q' q (c x) (c x')
+  ScopeE s m p p' q' q x x' ->
+  ScopeE s n p p' q' q (c x) (c x')
 weave = mapS
 
 -- ------------------------------------------------
@@ -320,10 +314,10 @@ type BaseAlg f s =
 type ScopedAlgS f s =
   forall m p p' q' q x' x a.
   (m ~ PrEff f s) =>
-  (forall r . IKleisliTupled m q r x a) ->
+  (forall r . IKleisli m q r x a) ->
   RunnerS f m ->
   p ->
-  ScopedE s m p p' q' q x' x ->
+  ScopeE s m p p' q' q x' x ->
   PrEff f IVoid () () (a, q)
 
 type ScopedAlgS' f s =
@@ -331,22 +325,22 @@ type ScopedAlgS' f s =
   (m ~ PrEff f s) =>
   RunnerS f m ->
   p ->
-  ScopedE s m p p' q' q x' x ->
+  ScopeE s m p p' q' q x' x ->
   PrEff f IVoid () () (a, q)
 
 type ScopedAlg f s =
   forall m p p' q' q x' x a r.
   (m ~ PrEff f s) =>
-  IKleisliTupled m q r x a ->
+  IKleisli m q r x a ->
   Runner f m ->
-  ScopedE s m p p' q' q x' x ->
+  ScopeE s m p p' q' q x' x ->
   PrEff f IVoid () () a
 
 type ScopedAlg' f s =
   forall m p p' q' q x' x .
   (m ~ PrEff f s) =>
   Runner f m ->
-  ScopedE s m p p' q' q x' x ->
+  ScopeE s m p p' q' q x' x ->
   PrEff f IVoid () () x
 
 interpretStatefulScoped ::

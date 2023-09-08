@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Control.IxMonad where
 
 import Data.Kind
@@ -48,11 +46,11 @@ ifThenElse :: Bool -> p -> p -> p
 ifThenElse True a _ = a
 ifThenElse False _ b = b
 
-when :: (IMonad m) => Bool -> m i i () -> m i i ()
-when False _ = return ()
+when :: IMonad m => Bool -> m i i () -> m i i ()
+when False _ = pure ()
 when True a = a
 
-foldM :: (IMonad m) => [a] -> c -> (a -> c -> m i i c) -> m i i c
+foldM :: IMonad m => [a] -> c -> (a -> c -> m i i c) -> m i i c
 foldM [] c _f = return c
 foldM [x] c f =
   f x c
