@@ -14,13 +14,16 @@ class (IApplicative m) => IMonad m where
   (>>) :: m i j a -> m j k b -> m i k b
   g >> f = g >>= const f
 
-(=<<) :: (IMonad m) => (a -> m j k b) -> m i j a -> m i k b
+join :: IMonad m => m i j (m j k a) -> m i k a
+join m = m >>= id
+
+(=<<) :: IMonad m => (a -> m j k b) -> m i j a -> m i k b
 f =<< m = m >>= f
 
-(>=>) :: (IMonad m) => (a -> m i j b) -> (b -> m j k c) -> (a -> m i k c)
+(>=>) :: IMonad m => (a -> m i j b) -> (b -> m j k c) -> (a -> m i k c)
 f >=> g = \a -> (f a >>= g)
 
-(<=<) :: (IMonad m) => (b -> m j k c) -> (a -> m i j b) -> (a -> m i k c)
+(<=<) :: IMonad m => (b -> m j k c) -> (a -> m i j b) -> (a -> m i k c)
 f <=< g = \a -> (f =<< g a)
 
 type IFunctor :: (p -> p -> Type -> Type) -> Constraint
