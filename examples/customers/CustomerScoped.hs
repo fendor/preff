@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 module CustomerScoped where
 
 import qualified Control.IxMonad as Ix
@@ -42,18 +43,17 @@ runCustomerStoreIO ::
   PrEff f IVoid () () a
 runCustomerStoreIO =
   interpretScopedH
-    ( \case
+    do \case
         ReadStore fp -> do
           embed $ readCustomersIO fp
         WriteStore fp cs -> do
           embed $ writeCustomersIO fp cs
-    )
-    ( \runner -> \case
+
+    do \runner -> \case
         WithStore fp m -> do
           exists <- embed (customersExistIO fp)
-          when exists $ do
+          when exists do
             runner m
-    )
 
 runCustomerStoreViaState ::
   (Member (State (Map FilePath [Customer])) f) =>

@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE EmptyCase #-}
 
 module PrEff where
 
@@ -147,20 +148,13 @@ type HandlerS c m n = forall r u v. c (m u v r) -> n u v (c r)
 -- TODO: this is trash
 type ScopedEffect :: forall k. (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect f where
-  mapS ::
+  weave ::
     (Functor c) =>
     c () ->
     (HandlerS c m n) ->
     ScopeE f m p p' q' q x x' ->
     ScopeE f n p p' q' q (c x) (c x')
 
-weave ::
-  (ScopedEffect s, Functor c) =>
-  c () ->
-  HandlerS c m n ->
-  ScopeE s m p p' q' q x x' ->
-  ScopeE s n p p' q' q (c x) (c x')
-weave = mapS
 
 -- ------------------------------------------------
 -- Utility functions
@@ -234,7 +228,7 @@ interpret handler = \case
     ImpureP op (iKleisli $ \x -> interpret handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ interpret handler m) op)
+      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ interpret handler m) op)
       (iKleisli $ \(_, x) -> interpret handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
@@ -251,7 +245,7 @@ reinterpret handler = \case
     ImpureP op (iKleisli $ \x -> reinterpret handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
+      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
       (iKleisli $ \(_, x) -> reinterpret handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
@@ -268,7 +262,7 @@ reinterpret2 handler = \case
     ImpureP op (iKleisli $ \x -> reinterpret2 handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
-      (mapS emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
+      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
       (iKleisli $ \(_, x) -> reinterpret2 handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
@@ -443,28 +437,25 @@ weaken op = OThere op
 data IVoid p q a
 
 algIVoid :: AlgP IVoid
-algIVoid _ = error "Invalid"
+algIVoid = \case
 
 algScopedIVoid :: AlgScoped IVoid
-algScopedIVoid _ = error "Invalid"
+algScopedIVoid = \case
 
 genIVoid :: Gen a a
 genIVoid x = x
 
 instance ScopedEffect IVoid where
-  mapS ::
+  weave ::
     (Functor c) =>
     c () ->
     (forall r u v. c (m u v r) -> n u v (c r)) ->
     ScopeE IVoid m p p' q' q x x' ->
     ScopeE IVoid n p p' q' q (c x) (c x')
-  mapS ctx nt s = absurdS s
+  weave ctx nt s = absurdS s
 
 absurdS :: ScopeE IVoid m p p' q' q x x' -> a
-absurdS v = error "Absurd"
-
--- runIIdentity :: IIdentity p q a -> a
--- runIIdentity (IIdentity a) = a
+absurdS _ = error "Absurd value encountered"
 
 data instance ScopeE IVoid m p p' q' q x' x
 
@@ -640,7 +631,7 @@ instance {-# OVERLAPPING #-} Member e (e ': effs) where
   inj :: f a -> Op (f : effs) a
   inj e = OHere e
 
-instance {-# INCOHERENT #-} (Member e effs) => Member e (eff ': effs) where
+instance Member eff f => Member eff (e ': f) where
   inj = OThere . inj
 
 instance

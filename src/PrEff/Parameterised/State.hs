@@ -91,7 +91,7 @@ modify ::
 modify f act = ScopedP (Zoom f id act) emptyCont
 
 instance ScopedEffect StateP where
-  mapS ctx transform (Zoom f restore op) =
+  weave ctx transform (Zoom f restore op) =
     Zoom f restore (transform $ op <$ ctx)
 
 stateAlg :: p -> StateP p q a -> (q, a)

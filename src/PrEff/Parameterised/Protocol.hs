@@ -50,8 +50,8 @@ data instance ScopeE Protocol m p p' q' q x x' where
 --   ctx () ->
 --   -- natural transformation
 --   (forall r u v. ctx (m u v r) -> n u v (ctx r)) ->
---   ScopedE Protocol m p p' q' q x x' ->
---   ScopedE Protocol n p p' q' q (ctx x) (ctx x')
+--   ScopeE Protocol m p p' q' q x x' ->
+--   ScopeE Protocol n p p' q' q (ctx x) (ctx x')
 -- myweave ctx nt = \case
 --   LoopCUnbounded m ->
 --     let
