@@ -15,24 +15,6 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
--- type Op :: forall k.
---   [k -> k -> Type -> Type] ->
---   [k] ->
---   [k] ->
---   Type ->
---   Type
--- data Op effs t1 t2 x where
---   OHere ::
---     forall x f1 effs sl1 sl2 sr1 sr2 .
---     f1 sl1 sl2 x ->
---     Op (f1 : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   OThere ::
---     forall x eff effs sr1 sr2 sl1 sl2 .
---     Op effs sr1 sr2 x ->
---     Op (eff : effs) (sl1 ': sr1) (sl2 ': sr2) x
---   deriving (Typeable)
-
--- Less general instance, note the entries sl and sr in the type level list
 type Op ::
   [Type -> Type] ->
   Type ->
@@ -64,8 +46,7 @@ data PrEff f s p q a where
     IKleisli (PrEff f s) q r  x' a ->
     PrEff f s p r a
 
-instance Functor (PrEff f s p q) where
-  fmap = Ix.imap
+deriving instance P.Functor (PrEff f s p q)
 
 instance P.Applicative (PrEff f s p p) where
   pure = Ix.pure
