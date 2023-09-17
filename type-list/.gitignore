@@ -1,6 +1,0 @@
-*.hi
-out
-.DS_Store
-dist-newstyle/
-.envrc
-.direnv/
