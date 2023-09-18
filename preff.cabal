@@ -17,8 +17,8 @@ common exts
     BangPatterns
     ConstraintKinds
     DataKinds
-    DeriveFunctor
     DeriveFoldable
+    DeriveFunctor
     DeriveTraversable
     FlexibleContexts
     FlexibleInstances
@@ -27,6 +27,7 @@ common exts
     InstanceSigs
     LambdaCase
     MultiParamTypeClasses
+    NumericUnderscores
     PartialTypeSignatures
     PolyKinds
     QualifiedDo
@@ -44,6 +45,7 @@ library
   exposed-modules:
     Control.IxMonad
     Data.ListP
+    FreeExperiment
     PPrEff
     PrEff
     PrEff.Parameterised.Array
@@ -56,23 +58,22 @@ library
     PrEff.Simple.State
     PrEff.Simple.Writer
     SerialArrays
-    Singletons
 
   build-depends:
     , array
     , base                  >=4.14.3.0
     , containers
     , first-class-families
+    , free
     , ghc
     , ghc-prim
+    , kan-extensions
+    , profunctors
     , random
     , singletons
     , singletons-base
     , stm
     , text
-    , free
-    , profunctors
-    , kan-extensions
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -84,6 +85,7 @@ library examples
     CustomerPScoped
     CustomerScoped
     Utils
+
   hs-source-dirs:   examples/customers/
   build-depends:
     , base
@@ -94,3 +96,16 @@ library examples
     , text
 
   default-language: Haskell2010
+
+benchmark free-encodings
+  import:         exts
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
+  hs-source-dirs: bench
+  build-depends:
+    , base
+    , criterion
+    , free
+    , kan-extensions
+    , preff
+    , profunctors
