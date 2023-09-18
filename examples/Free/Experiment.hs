@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module FreeExperiment where
+module Free.Experiment where
 
 import Control.Monad.Codensity
 import Control.Monad.Free

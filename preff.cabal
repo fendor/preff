@@ -10,7 +10,7 @@ build-type:      Simple
 extra-doc-files: CHANGELOG.md
 
 source-repository head
-  type: git
+  type:     git
   location: git://github.com/fendor/preff.git
 
 common warnings
@@ -49,7 +49,6 @@ library
   exposed-modules:
     Control.IxMonad
     Data.ListP
-    FreeExperiment
     PPrEff
     PrEff
     PrEff.Parameterised.Array
@@ -68,10 +67,7 @@ library
     , base                  >=4.14.3.0
     , containers
     , first-class-families
-    , free
     , ghc-prim
-    , kan-extensions
-    , profunctors
     , random
     , singletons
     , singletons-base
@@ -100,6 +96,25 @@ library examples
 
   default-language: Haskell2010
 
+library experiments
+  import:           exts
+  exposed-modules:
+    Free.Experiment
+
+  hs-source-dirs:   examples/
+  build-depends:
+    , base
+    , containers
+    , directory
+    , filepath
+    , preff
+    , text
+    , kan-extensions
+    , profunctors
+    , free
+
+  default-language: Haskell2010
+
 benchmark free-encodings
   import:         exts
   type:           exitcode-stdio-1.0
@@ -108,6 +123,7 @@ benchmark free-encodings
   build-depends:
     , base
     , criterion
+    , experiments
     , free
     , kan-extensions
     , preff

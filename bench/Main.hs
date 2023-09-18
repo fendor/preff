@@ -1,4 +1,4 @@
-import FreeExperiment
+import Free.Experiment
 
 import Control.Monad.Free
 import Control.Monad.Free.Church
