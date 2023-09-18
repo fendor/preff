@@ -126,9 +126,9 @@ runArrays prog = P.do
   P.pure ()
 
 runArraysH ::
-  Member (Embed IO) effs =>
-  PrEff effs Array p q a ->
-  PrEff effs IVoid () () [TMVar ()]
+  Member (Embed IO) f =>
+  PrEff f Array p q a ->
+  PrEff f IVoid () () [TMVar ()]
 runArraysH (Value _a) = Ix.return []
 runArraysH (ImpureP (Malloc i (a :: b)) c) =
   let upper = i - 1

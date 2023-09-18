@@ -35,11 +35,11 @@ type State e = Codensity (Free (StateF e))
 {-# INLINABLE getM #-}
 {-# INLINABLE putM #-}
 
-{-# NOINLINE increment #-}
-{-# NOINLINE incrementC #-}
-{-# NOINLINE incrementF #-}
-{-# NOINLINE incrementM #-}
-{-# NOINLINE incrementFast #-}
+{-# INLINABLE increment #-}
+{-# INLINABLE incrementC #-}
+{-# INLINABLE incrementF #-}
+{-# INLINABLE incrementM #-}
+{-# INLINABLE incrementFast #-}
 
 get :: Free (StateF e) e
 get = Free (Get (\x -> Pure x))

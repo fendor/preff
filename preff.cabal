@@ -9,6 +9,10 @@ build-type:      Simple
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files: CHANGELOG.md
 
+source-repository head
+  type: git
+  location: git://github.com/fendor/preff.git
+
 common warnings
   ghc-options: -Wall
 
@@ -65,7 +69,6 @@ library
     , containers
     , first-class-families
     , free
-    , ghc
     , ghc-prim
     , kan-extensions
     , profunctors
