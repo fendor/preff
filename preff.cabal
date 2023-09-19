@@ -128,3 +128,5 @@ benchmark free-encodings
     , kan-extensions
     , preff
     , profunctors
+
+  default-language: Haskell2010

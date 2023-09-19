@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE QualifiedDo #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# LANGUAGE BlockArguments #-}
 
 module PrEff.Parameterised.State where
 
@@ -46,29 +47,44 @@ data StateP p q a where
   GetP :: StateP p p p
 
 data instance ScopeE StateP m p p' q' q x x' where
-  Zoom ::
+  ZoomP ::
     (p -> p') ->
     (q' -> q) ->
     m p' q' x ->
     ScopeE StateP m p p' q' q x x
 
-putAI ::
+instance ScopedEffect StateP where
+  weave ctx transform (ZoomP f restore op) =
+    ZoomP f restore (transform $ op <$ ctx)
+
+putP ::
   p ->
   PrEff effs StateP q p ()
-putAI p = sendP (PutP p)
+putP p = sendP (PutP p)
 
-getAI ::
+getP ::
   PrEff effs StateP p p p
-getAI = ImpureP (GetP) emptyCont
+getP = sendP GetP
+
+zoomP ::
+  (p -> p') ->
+  (q' -> q) ->
+  PrEff effs StateP p' q' a ->
+  PrEff effs StateP p q a
+zoomP f restore act = sendScoped (ZoomP f restore act)
+
+modifyP ::
+  (p -> p') ->
+  PrEff effs StateP p' q' a ->
+  PrEff effs StateP p q' a
+modifyP f act = sendScoped (ZoomP f id act)
 
 stateChangeExp ::
   PrEff effs StateP String Int String
 stateChangeExp = Ix.do
-  s <- getAI
-  -- putAI ("Test" :: String)
-  putAI (5 :: Int)
-  -- putAI (3 :: Int)
-  x <- modify (+ (1 :: Int)) $ getAI
+  s <- getP
+  putP (5 :: Int)
+  x <- zoomP (+ (1 :: Int)) id $ getP
   pure $ s ++ show x
 
 runStateChangeExp :: (String, Int)
@@ -77,22 +93,6 @@ runStateChangeExp = run $ runStateP "Test Now" stateChangeExp
 -- >>> runStateChangeExp
 -- ("Test Now6",6)
 
-zoom ::
-  (p -> p') ->
-  (q' -> q) ->
-  PrEff effs StateP p' q' a ->
-  PrEff effs StateP p q a
-zoom f restore act = ScopedP (Zoom f restore act) emptyCont
-
-modify ::
-  (p -> p') ->
-  PrEff effs StateP p' q' a ->
-  PrEff effs StateP p q' a
-modify f act = ScopedP (Zoom f id act) emptyCont
-
-instance ScopedEffect StateP where
-  weave ctx transform (Zoom f restore op) =
-    Zoom f restore (transform $ op <$ ctx)
 
 stateAlg :: p -> StateP p q a -> (q, a)
 stateAlg k = \case
@@ -104,15 +104,28 @@ runStateP ::
   PrEff f StateP p q a ->
   PrEff f IVoid () () (a, q)
 runStateP =
-  interpretStatefulScoped
-    ( \s -> \case
+  interpretStatefulScopedH
+    do \s -> \case
         PutP s' -> pure (s', ())
         GetP -> pure (s, s)
-    )
-    ( \k run s -> \case
-        Zoom f restore m -> Ix.do
-          (x, q) <- run (f s) m
-          run (restore q) $ runIKleisli k x
-    )
 
--- >>>
+    do \run s -> \case
+        ZoomP f restore act -> do
+          (x, q) <- run (f s) act
+          pure (x, restore q)
+
+runStateP' ::
+  p ->
+  PrEff f StateP p q a ->
+  PrEff f IVoid () () (q, a)
+runStateP' p = \case
+  Value x -> pure (p, x)
+  Impure op k ->
+    Impure op (\x -> runStateP' p (k x))
+  ImpureP op k -> case op of
+    PutP x -> runStateP' x (k ())
+    GetP -> runStateP' p (k p)
+  ScopedP op k -> case op of
+    ZoomP f restore act -> do
+      (q', a) <- runStateP' (f p) act
+      runStateP' (restore q') (k a)

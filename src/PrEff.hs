@@ -124,31 +124,37 @@ transformKleisli f k = iKleisli $ f . runIKleisli k
 type ScopeE :: forall k. (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) -> k -> k -> k -> k -> Type -> Type -> Type
 data family ScopeE s
 
-type HandlerS c m n = forall r u v. c (m u v r) -> n u v (c r)
-
--- TODO: this is trash
 type ScopedEffect :: forall k. (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect f where
   weave ::
     (Functor c) =>
     c () ->
-    (HandlerS c m n) ->
+    (forall r u v. c (m u v r) -> n u v (c r)) ->
     ScopeE f m p p' q' q x x' ->
     ScopeE f n p p' q' q (c x) (c x')
-
 
 -- ------------------------------------------------
 -- Utility functions
 -- ------------------------------------------------
 
-send :: (Member eff f) => eff a -> PrEff f s p p a
-send f = Impure (inj f) emptyCont
+send ::
+  Member eff f =>
+  eff a ->
+  PrEff f s p p a
+send f =
+  Impure (inj f) emptyCont
 
-sendP :: s p q a -> PrEff eff s p q a
-sendP f = ImpureP f emptyCont
+sendP ::
+  s p q a ->
+  PrEff f s p q a
+sendP s =
+  ImpureP s emptyCont
 
-sendScoped :: ScopeE s (PrEff eff s) p p' q' q x' x -> PrEff eff s p q x
-sendScoped g = ScopedP g emptyCont
+sendScoped ::
+  ScopeE s (PrEff f s) p p' q' q x' x ->
+  PrEff f s p q x
+sendScoped scopedOp =
+  ScopedP scopedOp emptyCont
 
 -- ------------------------------------------------
 -- Algebraic Handlers
@@ -294,12 +300,12 @@ type ScopedAlgS f s =
   PrEff f IVoid () () (a, q)
 
 type ScopedAlgS' f s =
-  forall m p p' q' q x' x a.
+  forall m p p' q' q x' x.
   (m ~ PrEff f s) =>
   RunnerS f m ->
   p ->
   ScopeE s m p p' q' q x' x ->
-  PrEff f IVoid () () (a, q)
+  PrEff f IVoid () () (x, q)
 
 type ScopedAlg f s =
   forall m p p' q' q x' x a r.
