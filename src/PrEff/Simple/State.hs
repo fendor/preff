@@ -4,7 +4,7 @@ import qualified Control.IxMonad as Ix
 import PrEff
 
 data State s x where
-  Put :: s -> State s ()
+  Put :: !s -> State s ()
   Get :: State s s
 
 get ::
@@ -30,7 +30,7 @@ runState ::
   e ->
   PrEff (State e : f) s ps qs a ->
   PrEff f s ps qs (e, a)
-runState initial = interpretStateful initial $ \s -> \case
+runState !initial = interpretStateful initial $ \ !s -> \case
   Get -> pure (s, s)
   Put newS -> pure (newS, ())
 
