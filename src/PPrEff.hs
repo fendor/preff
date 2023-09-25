@@ -25,16 +25,16 @@ data PrEffP f p q a where
     -- (x' -> PrEffP f q r a) ->
     PrEffP f p r a
 
-instance Functor (PrEffP f p q) where
-  fmap = Ix.imap
+-- instance Functor (PrEffP f p q) where
+--   fmap = Ix.imap
 
-instance P.Applicative (PrEffP f p p) where
-  pure = Ix.pure
+-- instance P.Applicative (PrEffP f p p) where
+--   pure = Ix.pure
 
-  f <*> x = f Ix.<*> x
+--   f <*> x = f Ix.<*> x
 
-instance P.Monad (PrEffP f p p) where
-  a >>= f = a Ix.>>= f
+-- instance P.Monad (PrEffP f p p) where
+--   a >>= f = a Ix.>>= f
 
 instance IFunctor (PrEffP f) where
   imap f (Pure a) = Pure $ f a

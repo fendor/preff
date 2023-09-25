@@ -2,10 +2,12 @@
 
 module Free.Experiment where
 
+import qualified Control.IxMonad as Ix
 import Control.Monad.Codensity
 import Control.Monad.Free
 import Control.Monad.Free.Church
 import qualified Control.Monad.Free.Church as Church
+import Data.Kind (Type)
 
 -- getOut :: Sing (SetAt n p xs) -> Sing p
 -- getOut m = undefined
@@ -23,23 +25,53 @@ data StateF e a
 
 type State e = Codensity (Free (StateF e))
 
-{-# INLINABLE get #-}
-{-# INLINABLE put #-}
+{-# INLINEABLE get #-}
+{-# INLINEABLE put #-}
 
-{-# INLINABLE getC #-}
-{-# INLINABLE putC #-}
+{-# INLINEABLE getC #-}
+{-# INLINEABLE putC #-}
 
-{-# INLINABLE getF #-}
-{-# INLINABLE putF #-}
+{-# INLINEABLE getF #-}
+{-# INLINEABLE putF #-}
 
-{-# INLINABLE getM #-}
-{-# INLINABLE putM #-}
+{-# INLINEABLE getM #-}
+{-# INLINEABLE putM #-}
 
-{-# INLINABLE increment #-}
-{-# INLINABLE incrementC #-}
-{-# INLINABLE incrementF #-}
-{-# INLINABLE incrementM #-}
-{-# INLINABLE incrementFast #-}
+{-# INLINEABLE increment #-}
+{-# INLINEABLE incrementC #-}
+{-# INLINEABLE incrementF #-}
+{-# INLINEABLE incrementM #-}
+{-# INLINEABLE incrementFast #-}
+
+newtype ICodensity m j k a = ICodensity
+  { runICodensity :: forall b i. (a -> m i j b) -> m i k b
+  }
+
+-- newtype GCodensity m f a = GCodensity
+--   { runGCodensity :: forall c g . (a -> m g c) -> m (f <> g) c
+--   }
+
+instance Ix.IFunctor (ICodensity m) where
+  imap f (ICodensity run) = ICodensity $ \k ->
+    run (\a -> k (f a))
+
+instance Ix.IApplicative (ICodensity m) where
+  pure :: a -> ICodensity m k k a
+  pure a = ICodensity $ \k -> k a
+
+  (<*>) :: ICodensity m i j (a -> b) -> ICodensity m j r a -> ICodensity m i r b
+  f <*> g =
+    ICodensity $ \bfr ->
+      runICodensity g $ \x -> runICodensity f $ \ab -> bfr (ab x)
+
+exp :: Ix.IMonad m => forall b i . (a -> m j k b) -> m i k b
+exp = (Ix.>>=) (undefined :: m j k a)
+
+-- instance Ix.IMonad (ICodensity m) where
+--   (>>=) ::
+--     ICodensity m j k a -> (a -> ICodensity m k r b) -> ICodensity m j r b
+--   m >>= k = ICodensity (\(c :: forall c i . (b -> m i j c)) ->
+--     runICodensity (runICodensity m $ \a -> k a) c)
 
 get :: Free (StateF e) e
 get = Free (Get (\x -> Pure x))
@@ -59,21 +91,21 @@ getF = toF get
 putF :: e -> F (StateF e) ()
 putF e = toF (put e)
 
-getM :: MonadFree (StateF e) m => m e
+getM :: (MonadFree (StateF e) m) => m e
 getM = wrap (Get (\x -> pure x))
 
-putM :: MonadFree (StateF e) m => e -> m ()
+putM :: (MonadFree (StateF e) m) => e -> m ()
 putM e = wrap (Put e (pure ()))
 
 -- ----------------------------------------------------------------------------
 -- Experiment for cross module optimisation checks
 -- ----------------------------------------------------------------------------
 
-freeMonadExp ::  Integer -> (Integer, Integer)
+freeMonadExp :: Integer -> (Integer, Integer)
 freeMonadExp start = runState 0 (Church.improve (prog start >>= prog >>= prog))
-  where
-    prog s =
-      incrementM s >>= incrementM >>= incrementM
+ where
+  prog s =
+    incrementM s >>= incrementM >>= incrementM
 
 -- ----------------------------------------------------------------------------
 -- Runners
@@ -91,12 +123,14 @@ runState s = \case
 
 runStateChurch :: e -> F (StateF e) a -> (a, e)
 runStateChurch start op =
-  (runF op
-    (\a s -> (a, s))
-    (\cases
-      (Get k) s -> k s s
-      (Put e k) _s -> k e
-      ))
+  ( runF
+      op
+      (\a s -> (a, s))
+      ( \cases
+          (Get k) s -> k s s
+          (Put e k) _s -> k e
+      )
+  )
     start
 
 -- ----------------------------------------------------------------------------
@@ -130,7 +164,7 @@ increment n = do
       put (x + 1)
       increment (n - 1)
 
-incrementM :: MonadFree (StateF Integer) m => Integer -> m Integer
+incrementM :: (MonadFree (StateF Integer) m) => Integer -> m Integer
 incrementM n = do
   if n <= 0
     then getM

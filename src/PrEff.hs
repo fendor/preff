@@ -42,24 +42,25 @@ data PrEff f s p q a where
     IKleisli (PrEff f s) q r x a ->
     PrEff f s p r a
   ScopedP ::
-    ScopeE s (PrEff f s) p p' q' q x x' ->
-    IKleisli (PrEff f s) q r  x' a ->
+    ScopeE s (PrEff f s) p p' q' q x' x ->
+    IKleisli (PrEff f s) q r  x a ->
     PrEff f s p r a
 
-deriving instance P.Functor (PrEff f s p q)
+-- deriving instance P.Functor (PrEff f s p q)
 
-instance P.Applicative (PrEff f s p p) where
-  pure = Ix.pure
-  f <*> x = f Ix.<*> x
+-- instance P.Applicative (PrEff f s p p) where
+--   pure = Ix.pure
+--   f <*> x = f Ix.<*> x
 
-instance P.Monad (PrEff f s p p) where
-  a >>= f = a Ix.>>= f
+-- instance P.Monad (PrEff f s p p) where
+--   a >>= f = a Ix.>>= f
 
 instance IFunctor (PrEff f s) where
   imap f (Value a)      = Value $ f a
   imap f (Impure op k)  = Impure  op (imap f . k)
   imap f (ImpureP op k) = ImpureP op (imap f . k)
   imap f (ScopedP op k) = ScopedP op (imap f . k)
+  {-# INLINE imap #-}
 
 instance IApplicative (PrEff f s) where
   pure = Value
@@ -67,6 +68,8 @@ instance IApplicative (PrEff f s) where
   Impure  op k <*> f = Impure  op ((<*> f) . k)
   ImpureP op k <*> f = ImpureP op ((<*> f) . k)
   ScopedP op k <*> f = ScopedP op ((<*> f) . k)
+  {-# INLINE pure #-}
+  {-# INLINE (<*>) #-}
 
 instance IMonad (PrEff f s) where
   return = pure
@@ -75,6 +78,7 @@ instance IMonad (PrEff f s) where
   Impure  op k >>= f = Impure  op ((>>= f) . k)
   ImpureP op k >>= f = ImpureP op ((>>= f) . k)
   ScopedP op k >>= f = ScopedP op ((>>= f) . k)
+  {-# INLINE (>>=) #-}
 
 type family Fst x where
   Fst '(a, b) = a
@@ -82,24 +86,9 @@ type family Fst x where
 type family Snd x where
   Snd '(a, b) = b
 
-{- | Wrapper type that can carry additional type state.
-
->>> :t runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
-runIKleisli (undefined :: IKleisliTupled m '(p, a) '(q, b))
-  :: forall {k1} {k2} {k3} {p :: k1} {a} {m :: k1 -> k2 -> k3 -> *}
-            {q :: k2} {b :: k3}.
-     a -> m p q b
-
->>> :t runIKleisli (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
-runIKleisli (undefined :: IKleisliTupled (PrEff f s) '(p, a) '(q, b))
-  :: forall {k2} {p :: k2} {a} {f :: [* -> *]}
-            {s :: k2 -> k2 -> * -> *} {q :: k2} {b}.
-     a -> PrEff f s p q b
--}
--- newtype IKleisliTupled m ia ob = IKleisliTupled
---   { runIKleisli :: Snd ia -> m (Fst ia) (Fst ob) (Snd ob)
---   }
-
+-- | Kleisli monad extended for parameterised monads.
+--
+-- @m i o a b = a -> m i o b@
 type IKleisli m i o a b = a -> m i o b
 
 iKleisli :: (a -> m i o b) -> IKleisli m i o a b
@@ -202,6 +191,11 @@ run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
 
 -- Natural transformation
 type (~>) f g = forall x. f x -> g x
+
+{-# INLINABLE interpret #-}
+{-# INLINABLE reinterpret #-}
+{-# INLINABLE reinterpret2 #-}
+{-# INLINABLE interpretStateful #-}
 
 interpret :: (ScopedEffect f) => (forall u. eff ~> PrEff effs f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs f p q
 interpret handler = \case
@@ -439,10 +433,10 @@ instance ScopedEffect IVoid where
     (forall r u v. c (m u v r) -> n u v (c r)) ->
     ScopeE IVoid m p p' q' q x x' ->
     ScopeE IVoid n p p' q' q (c x) (c x')
-  weave ctx nt s = absurdS s
+  weave _ctx _nt s = absurdS s
 
 absurdS :: ScopeE IVoid m p p' q' q x x' -> a
-absurdS _ = error "Absurd value encountered"
+absurdS = \case
 
 data instance ScopeE IVoid m p p' q' q x' x
 
@@ -455,20 +449,7 @@ runIO (Impure (OThere _) _k) = error "Impossible"
 runIO (ImpureP _cmd _k) = error "Impossible"
 runIO (ScopedP _ _) = error "Impossible"
 
-runEmbed ::
-  (ScopedEffect s, P.Monad m) =>
-  (forall x u v. m x -> PrEff effs s u v x) ->
-  PrEff (Embed m : effs) s p q a ->
-  PrEff effs s p q (m a)
-runEmbed handle (Value a) = P.pure $ P.pure a
-runEmbed handle (Impure (OHere (Embed m)) k) = Ix.do
-  x <- handle m
-  runEmbed handle $ runIKleisli k x
-runEmbed handle (Impure (OThere _) _k) = error "Impossible"
-runEmbed handle (ImpureP _cmd _k) = error "Impossible" -- runIO $ runIKleisli k (runIIdentity cmd)
-runEmbed handle (ScopedP _ _) = error "Impossible"
-
-embedIO :: (Member (Embed IO) effs) => IO a -> PrEff effs f p p a
+embedIO :: (Member (Embed IO) f) => IO a -> PrEff f s p p a
 embedIO io = embed io
 
 data Embed m a where
@@ -602,14 +583,6 @@ type family Assume ind ps where
   Assume _ '[] = TypeError (Text "This sucks")
   Assume 0 (x : xs) = x
   Assume n (x : xs) = Assume (n - 1) xs
-
--- inj :: KnownNat n =>
---   proxy n -> e p q a -> Op effs ps qs a
--- inj pval op = go (natVal pval)
---   where
---     -- go :: Integer -> Op (e : effs2) (p : ps2) (q : qs2) a
---     go 0 = unsafeCoerce OHere op
---     go n = unsafeCoerce OThere (go (n - 1))
 
 class Member eff f where
   inj :: eff a -> Op f a

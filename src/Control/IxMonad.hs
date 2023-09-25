@@ -1,7 +1,9 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Control.IxMonad where
 
 import Data.Kind
 import Prelude hiding (Applicative (..), Functor (..), Monad (..), mapM, (=<<))
+import qualified Prelude as P
 
 -- ------------------------------------------------
 -- Parametric indexed monad
@@ -13,6 +15,8 @@ class (IApplicative m) => IMonad m where
   (>>=) :: m i j a -> (a -> m j k b) -> m i k b
   (>>) :: m i j a -> m j k b -> m i k b
   g >> f = g >>= const f
+
+  return = pure
 
 join :: IMonad m => m i j (m j k a) -> m i k a
 join m = m >>= id
@@ -40,6 +44,16 @@ class (IFunctor f) => IApplicative f where
   (*>) ::
     f i j b1 -> f j r b2 -> f i r b2
   a1 *> a2 = (id <$ a1) <*> a2
+
+instance forall m p q . (IFunctor m) => P.Functor (m p q) where
+  fmap = imap
+
+instance forall m p . (IApplicative m) => P.Applicative (m p p) where
+  pure = pure
+  (<*>) = (<*>)
+
+instance forall m p . (IMonad m) => P.Monad (m p p) where
+  (>>=) = (>>=)
 
 -- ------------------------------------------------
 -- Rebindable Syntax and IMonad Utils
