@@ -69,7 +69,7 @@ stateExample ::
 stateExample = Ix.do
   i <- get @Int
   put (i + i)
-  Ix.return $ show i
+  pure $ show i
 
 ambiguityExample ::
   (Member (State Int) effs) =>
@@ -78,7 +78,7 @@ ambiguityExample = Ix.do
   i <- get
   i2 <- get
   put (i + i2)
-  Ix.return $ i + i2
+  pure $ i + i2
 
 moreExamples ::
   ( Member (State Int) effs
@@ -91,7 +91,7 @@ moreExamples = Ix.do
   (m :: String) <- get
   put (m ++ reverse m)
   _ <- ambiguityExample
-  Ix.return $ i + i2
+  pure $ i + i2
 
 -- -- runner :: PrEff '[IIdentity] IVoid '[()] '[()] (Int, String)
 -- runner = runState @() @() "mama" $ runStateG @() @() (5 :: Int) moreExamples

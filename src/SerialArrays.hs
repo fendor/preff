@@ -37,7 +37,7 @@ runSerialArrays ::
   (Member (Embed IO) effs) =>
   PrEff effs Array p q a ->
   PrEff effs IVoid () () a
-runSerialArrays (Value a) = Ix.return a
+runSerialArrays (Value a) = pure a
 runSerialArrays (ScopedP _ _) = error "Test"
 runSerialArrays (Impure cmd k) =
   Impure cmd (iKleisli $ \x -> runSerialArrays $ runIKleisli k x)
@@ -97,12 +97,12 @@ serialConvolve before after inputs weights = Ix.do
     currEl <- read inputs i
     nextEl <-
       if j == len
-        then Ix.return after
+        then pure after
         else read inputs j
     let sumRes = [prevEl, currEl, nextEl] `dot` weights
     write inputs i sumRes
-    Ix.return currEl
-  Ix.return ()
+    pure currEl
+  pure ()
 
 realToComplex :: (Integral a) => a -> Complex Double
 realToComplex a = toDouble a :+ 0

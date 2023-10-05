@@ -1,9 +1,8 @@
-{-# LANGUAGE QualifiedDo #-}
-
 module PrEff.Parameterised.Protocol where
 
 import Data.Kind
 import PrEff hiding (send)
+import qualified PrEff
 import qualified Control.IxMonad as Ix
 import PrEff.Simple.State
 
@@ -28,23 +27,23 @@ data Protocol p q r where
   Send :: a -> Protocol (S a : p) p ()
   Recv :: Protocol (R a : p) p a
 
-data instance ScopeE Protocol m p p' q' q x x' where
-  LoopSUnbounded ::
-    m a '[End] (Maybe x) ->
-    ScopeE Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
-  LoopCUnbounded ::
+data instance ScopeE Protocol m p p' q' q x' x where
+  Offer ::
     m a '[End] x ->
-    ScopeE Protocol m (CLU a : r) a '[End] r x [x]
+    m b '[End] x ->
+    ScopeE Protocol m (O a b : c) '[O a b] '[End] c x x
   Sel1 ::
     m a '[End] x ->
     ScopeE Protocol m (C a b : c) a '[End] c x x
   Sel2 ::
     m b '[End] x ->
     ScopeE Protocol m (C a b : c) b '[End] c x x
-  Offer ::
+  LoopSUnbounded ::
+    m a '[End] (Maybe x) ->
+    ScopeE Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
+  LoopCUnbounded ::
     m a '[End] x ->
-    m b '[End] x ->
-    ScopeE Protocol m (O a b : c) '[O a b] '[End] c x x
+    ScopeE Protocol m (CLU a : r) a '[End] r x [x]
 
 -- myweave :: Functor ctx =>
 --   ctx () ->
@@ -104,41 +103,79 @@ recv ::
 recv = sendP Recv
 
 sel1 ::
-  PrEff effs Protocol p' '[End] a ->
-  PrEff effs Protocol (C p' b : r) r a
+  PrEff effs Protocol a '[End] x ->
+  PrEff effs Protocol (C a b : p) p x
 sel1 act = sendScoped (Sel1 act)
 
 sel2 ::
-  PrEff effs Protocol p' '[End] a1 ->
-  PrEff effs Protocol (C a2 p' : r) r a1
+  PrEff effs Protocol b '[End] x ->
+  PrEff effs Protocol (C a b : p) p x
 sel2 act = sendScoped (Sel2 act)
 
 offer ::
-  PrEff effs Protocol a1 '[End] a2 ->
-  PrEff effs Protocol b '[End] a2 ->
-  PrEff effs Protocol (O a1 b : r) r a2
+  PrEff effs Protocol a '[End] x ->
+  PrEff effs Protocol b '[End] x ->
+  PrEff effs Protocol (O a b : p) p x
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
   PrEff effs Protocol a '[End] (Maybe x) ->
-  PrEff effs Protocol (SLU a: r) r [x]
+  PrEff effs Protocol (SLU a: p) p [x]
 loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
   PrEff effs Protocol a '[End] x ->
-  PrEff effs Protocol (CLU a: r) r [x]
+  PrEff effs Protocol (CLU a: p) p [x]
 loopC act = sendScoped (LoopCUnbounded act)
 
-simpleServer :: PrEff effs Protocol (S Int : R String : k) k String
+simpleServer :: PrEff effs Protocol '[S String, R String, End] '[End] String
 simpleServer = Ix.do
-  send @Int 5
-  s <- recv @String
-  Ix.return s
+  send "Ping"
+  s <- recv
+  pure s
 
-simpleClient :: PrEff effs Protocol (R Int : S String : k) k ()
+simpleClient :: PrEff effs Protocol '[R String, S String, End] '[End] String
 simpleClient = Ix.do
-  n <- recv @Int
-  send (show $ n * 25)
+  a <- recv
+  send "Pong"
+  pure a
+
+stringOrInt :: PrEff f Protocol [O '[R String, End] '[R Int, End], End] '[End] String
+stringOrInt = Ix.do
+  offer
+    ( Ix.do
+        n <- recv @String
+        pure n
+    )
+    ( Ix.do
+        n <- recv @Int
+        pure (show n)
+    )
+
+data RandomNumber a where
+  GetNumber :: RandomNumber Int
+
+getNumber :: Member RandomNumber f => PrEff f s p p Int
+getNumber = PrEff.send GetNumber
+
+runRandomNumber :: ScopedEffect s => PrEff (RandomNumber : effs) s p q x -> PrEff effs s p q x
+runRandomNumber = interpret $ \case
+  -- Chosen by fair dice roll
+  GetNumber -> pure 4
+
+guessNumberServer ::
+  Member RandomNumber f =>
+  PrEff f Protocol '[SLU '[R Int, End], End] '[End] Int
+guessNumberServer = Ix.do
+  num <- getNumber
+  attempts <- loopS $ Ix.do
+    n <- recv
+    if n == num
+      then pure Nothing
+      else pure (Just ())
+
+  pure $ length attempts
+
 
 serverLoop :: Member (State Int) effs => PrEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
@@ -149,29 +186,29 @@ serverLoop = Ix.do
     put n
     if n < 10
       then
-        Ix.return Nothing
+        pure Nothing
       else
-        Ix.return $ Just n
+        pure $ Just n
 
 clientLoop :: PrEff effs Protocol (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
     send (n - 1)
-    Ix.return ()
+    pure ()
 
 choice ::
   PrEff
     effs
     Protocol
-    (S Int : C '[R Int, End] b : k2)
-    k2
+    (S Int : C '[R Int, End] b : k)
+    k
     Int
 choice = Ix.do
   send @Int 5
   sel1 $ Ix.do
     n <- recv @Int
-    Ix.return n
+    pure n
 
 andOffer ::
   PrEff
@@ -189,7 +226,7 @@ andOffer = Ix.do
     ( Ix.do
         send @Int n
     )
-  Ix.return ()
+  pure ()
 
 choice2 ::
   PrEff
@@ -205,13 +242,13 @@ choice2 = Ix.do
     then Ix.do
         sel1 $ Ix.do
           x <- recv @String
-          Ix.return x
+          pure x
 
     else Ix.do
         sel2 $ Ix.do
           send @String "Test"
           x <- recv @String
-          Ix.return x
+          pure x
 
 
 simpleLoopingClientServer :: Member (State Int) effs => PrEff effs IVoid () () ([()], [Int])
@@ -222,7 +259,7 @@ connect ::
   PrEff '[] Protocol p1 '[End] a ->
   PrEff '[] Protocol p2 '[End] b ->
   PrEff '[] IVoid () () (a, b)
-connect (Value x) (Value y) = Ix.return (x, y)
+connect (Value x) (Value y) = pure (x, y)
 connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
 connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
 connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
@@ -244,7 +281,7 @@ connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = 
     go (r1, r2) = Ix.do
       (a, b) <- connect act1 act2
       case a of
-        Nothing -> Ix.return (r1, b:r2)
+        Nothing -> pure (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
 -- TODO: case missing for the other loop case
 
@@ -257,7 +294,7 @@ connect' ::
   PrEff effs Protocol p1 '[End] a ->
   PrEff effs Protocol p2 '[End] b ->
   PrEff effs IVoid () () (a, b)
-connect' (Value x) (Value y) = Ix.return (x, y)
+connect' (Value x) (Value y) = pure (x, y)
 connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
 connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisli k1 ()) (runIKleisli k2 a)
 connect' (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
@@ -279,7 +316,7 @@ connect' (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) =
     go (r1, r2) = Ix.do
       (a, b) <- connect' act1 act2
       case a of
-        Nothing -> Ix.return (r1, b:r2)
+        Nothing -> pure (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
 connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = Ix.do
   (a, b) <- go ([], [])
@@ -288,7 +325,7 @@ connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) =
     go (r1, r2) = Ix.do
       (a, b) <- connect' act1 act2
       case b of
-        Nothing -> Ix.return (a:r1, r2)
+        Nothing -> pure (a:r1, r2)
         Just b' -> go (a: r1, b':r2)
 
 connect' (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect' (runIKleisli k1 x) k2

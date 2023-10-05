@@ -14,13 +14,13 @@ readerExample :: Member (Reader e) eff =>
   PrEff eff g p p e
 readerExample = Ix.do
   x <- ask
-  Ix.return x
+  pure x
 
 -- runStateProt ::
 --   e ->
 --   PrEff (StateS e: effs) Protocol p q a ->
 --   PrEff effs Protocol p q (e, a)
--- runStateProt s (Value a) = Ix.return (s, a)
+-- runStateProt s (Value a) = pure (s, a)
 -- runStateProt s (Impure (OHere GetS) k) = runStateProt s (runIKleisli k s)
 -- runStateProt _s (Impure (OHere (PutS s')) k) = runStateProt s' (runIKleisli k ())
 -- runStateProt s (Impure (OThere cmd) k) = Impure cmd $ IKleisliTupled (runStateProt s . runIKleisli k)
@@ -39,7 +39,7 @@ readerExample = Ix.do
 --       (ScopedE Protocol (PrEff effs Protocol) p p' q' q (e, x) (e, [x]))
 -- runS e act = Ix.do
 --   let m' = runStateProt e act
---   Ix.return $ LoopCUnbounded m'
+--   pure $ LoopCUnbounded m'
   -- LoopSUnbounded m ->
   --   let
   --     n = nt (m <$ ctx)

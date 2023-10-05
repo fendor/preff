@@ -129,7 +129,7 @@ runArraysH ::
   Member (Embed IO) f =>
   PrEff f Array p q a ->
   PrEff f IVoid () () [TMVar ()]
-runArraysH (Value _a) = Ix.return []
+runArraysH (Value _a) = pure []
 runArraysH (ImpureP (Malloc i (a :: b)) c) =
   let upper = i - 1
    in let bounds = (0, upper)
@@ -180,7 +180,7 @@ runArraysH (ScopedP (AFork c) a) = Ix.do
       embedIO (atomically $ mapM_ takeTMVar x)
         Ix.>> embedIO (atomically (putTMVar var () {-)-}))
         Ix.>> runArraysH (runIKleisli a Future)
-        Ix.>>= (\result -> Ix.return (var : result))
+        Ix.>>= (\result -> pure (var : result))
 runArraysH (ScopedP (AFinish c) a) =
   runArraysH c Ix.>>= (embedIO . atomically . mapM_ takeTMVar) Ix.>> runArraysH (runIKleisli a ())
 runArraysH _ = undefined

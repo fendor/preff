@@ -254,7 +254,7 @@ interpretStateful ::
   (forall v x. s -> eff x -> PrEff effs f v v (s, x)) ->
   PrEff (eff : effs) f ps qs a ->
   PrEff effs f ps qs (s, a)
-interpretStateful !s _hdl (Value a) = Ix.return (s, a)
+interpretStateful !s _hdl (Value a) = pure (s, a)
 interpretStateful !s handler (Impure (OHere op) k) = Ix.do
   (newS, x) <- handler s op
   interpretStateful newS handler (runIKleisli k x)
@@ -323,7 +323,7 @@ interpretStatefulScoped ::
   p ->
   PrEff f s p q a ->
   PrEff f IVoid () () (a, q)
-interpretStatefulScoped alg salg p (Value x) = Ix.return (x, p)
+interpretStatefulScoped alg salg p (Value x) = pure (x, p)
 interpretStatefulScoped alg salg p (Impure cmd k) =
   Impure cmd
     $ iKleisli
@@ -341,7 +341,7 @@ interpretStatefulScopedH ::
   p ->
   PrEff f s p q a ->
   PrEff f IVoid () () (a, q)
-interpretStatefulScopedH alg salg p (Value x) = Ix.return (x, p)
+interpretStatefulScopedH alg salg p (Value x) = pure (x, p)
 interpretStatefulScopedH alg salg p (Impure cmd k) =
   Impure cmd
     $ iKleisli
@@ -359,7 +359,7 @@ interpretScoped ::
   ScopedAlg f s ->
   PrEff f s p q a ->
   PrEff f IVoid () () a
-interpretScoped alg salg (Value x) = Ix.return x
+interpretScoped alg salg (Value x) = pure x
 interpretScoped alg salg (Impure cmd k) =
   Impure cmd
     $ iKleisli
@@ -376,7 +376,7 @@ interpretScopedH ::
   ScopedAlg' f s ->
   PrEff f s p q a ->
   PrEff f IVoid () () a
-interpretScopedH alg salg (Value x) = Ix.return x
+interpretScopedH alg salg (Value x) = pure x
 interpretScopedH alg salg (Impure cmd k) =
   Impure cmd
     $ iKleisli
@@ -393,7 +393,7 @@ interpretScopedH alg salg (ScopedP op k) = Ix.do
 --   p ->
 --   PrEff eff StateP p q a ->
 --   PrEff eff IVoid () () (a, q)
--- runStateDirect p (Value x) = Ix.return (x, p)
+-- runStateDirect p (Value x) = pure (x, p)
 -- runStateDirect p (Impure cmd k) =
 --   Impure cmd $
 --     IKleisliTupled $ \x -> runStateDirect p $ runIKleisli k x
