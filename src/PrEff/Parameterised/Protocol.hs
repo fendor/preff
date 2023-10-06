@@ -262,29 +262,36 @@ connect ::
 connect (Value x) (Value y) = pure (x, y)
 connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
 connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
-connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
+connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
+connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
+connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
+connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = Ix.do
+connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = do
   (a, b) <- go ([], [])
   connect (runIKleisli k1 a) (runIKleisli k2 b)
   where
-    go (r1, r2) = Ix.do
+    go (r1, r2) = do
       (a, b) <- connect act1 act2
       case a of
         Nothing -> pure (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
--- TODO: case missing for the other loop case
-
+connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = do
+  (b, a) <- go ([], [])
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+  where
+    go (r1, r2) = do
+      (b, a) <- connect act1 act2
+      case a of
+        Nothing -> pure (r1, b:r2)
+        Just a' -> go (a': r1, b:r2)
 
 connect _ _ = error "Procol.connect: internal tree error"
 

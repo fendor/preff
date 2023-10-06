@@ -16,7 +16,7 @@ import GHC.Types (Any)
 import PrEff.Parameterised.Array hiding (afork, join, length, malloc, read, slice, write)
 import Unsafe.Coerce (unsafeCoerce)
 import PrEff
-import Control.IxMonad as Ix
+import qualified Control.IxMonad as Ix
 import Prelude hiding (Monad (..), length, read)
 
 afork a = ScopedP (AFork a) emptyCont
@@ -92,7 +92,7 @@ serialConvolve ::
   PrEff eff Array k2 k2 ()
 serialConvolve before after inputs weights = Ix.do
   len <- length inputs
-  _ <- foldM [0 .. (len - 1)] before $ \i prevEl -> Ix.do
+  _ <- Ix.foldM [0 .. (len - 1)] before $ \i prevEl -> Ix.do
     let j = i + 1
     currEl <- read inputs i
     nextEl <-
