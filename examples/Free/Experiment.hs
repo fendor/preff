@@ -43,36 +43,6 @@ type State e = Codensity (Free (StateF e))
 {-# INLINEABLE incrementM #-}
 {-# INLINEABLE incrementFast #-}
 
-newtype ICodensity m j k a = ICodensity
-  { runICodensity :: forall b i. (a -> m i j b) -> m i k b
-  }
-
--- newtype GCodensity m f a = GCodensity
---   { runGCodensity :: forall c g . (a -> m g c) -> m (f <> g) c
---   }
-
-instance Ix.IFunctor (ICodensity m) where
-  imap f (ICodensity run) = ICodensity $ \k ->
-    run (\a -> k (f a))
-
-instance Ix.IApplicative (ICodensity m) where
-  pure :: a -> ICodensity m k k a
-  pure a = ICodensity $ \k -> k a
-
-  (<*>) :: ICodensity m i j (a -> b) -> ICodensity m j r a -> ICodensity m i r b
-  f <*> g =
-    ICodensity $ \bfr ->
-      runICodensity g $ \x -> runICodensity f $ \ab -> bfr (ab x)
-
-exp :: Ix.IMonad m => forall b i . (a -> m j k b) -> m i k b
-exp = (Ix.>>=) (undefined :: m j k a)
-
--- instance Ix.IMonad (ICodensity m) where
---   (>>=) ::
---     ICodensity m j k a -> (a -> ICodensity m k r b) -> ICodensity m j r b
---   m >>= k = ICodensity (\(c :: forall c i . (b -> m i j c)) ->
---     runICodensity (runICodensity m $ \a -> k a) c)
-
 get :: Free (StateF e) e
 get = Free (Get (\x -> Pure x))
 

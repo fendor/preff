@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Control.IxMonad where
 
@@ -45,14 +46,14 @@ class (IFunctor f) => IApplicative f where
     f i j b1 -> f j r b2 -> f i r b2
   a1 *> a2 = (id <$ a1) <*> a2
 
-instance forall m p q . (IFunctor m) => P.Functor (m p q) where
+instance IFunctor m => P.Functor (m p q) where
   fmap = imap
 
-instance forall m p . (IApplicative m) => P.Applicative (m p p) where
+instance IApplicative m => P.Applicative (m p p) where
   pure = pure
   (<*>) = (<*>)
 
-instance forall m p . (IMonad m) => P.Monad (m p p) where
+instance IMonad m => P.Monad (m p p) where
   (>>=) = (>>=)
 
 -- ------------------------------------------------

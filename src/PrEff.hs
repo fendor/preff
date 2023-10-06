@@ -609,3 +609,33 @@ type family Members fs effs where
   Members (f ': fs) effs = (Member f effs, Members fs effs)
   Members '[] effs = ()
 
+type Eff f s p q x = ICodensity (PrEff f s) p q x
+
+wrap :: PrEff f s p q x -> Eff f s p q x
+wrap eff = ICodensity (eff >>=)
+
+improve :: Eff f s p q x -> PrEff f s p q x
+improve (ICodensity act) = act (\x -> pure x)
+
+newtype ICodensity m j k a = ICodensity
+  { runICodensity :: forall b i. (a -> m k i b) -> m j i b
+  }
+
+instance Ix.IFunctor (ICodensity m) where
+  imap f (ICodensity run) = ICodensity $ \k ->
+    run (\a -> k (f a))
+
+instance Ix.IApplicative (ICodensity m) where
+  pure :: a -> ICodensity m k k a
+  pure a = ICodensity $ \k -> k a
+
+  (<*>) :: ICodensity m i j (a -> b) -> ICodensity m j r a -> ICodensity m i r b
+  f <*> g =
+    ICodensity $ \bfr ->
+      runICodensity f $ \ab -> runICodensity g $ \x ->  bfr (ab x)
+
+instance Ix.IMonad (ICodensity m) where
+  (>>=) ::
+    ICodensity m j k a -> (a -> ICodensity m k r b) -> ICodensity m j r b
+  m >>= k = ICodensity (\c ->
+    runICodensity m $ \a -> runICodensity (k a) c)

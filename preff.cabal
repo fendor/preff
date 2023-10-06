@@ -51,6 +51,8 @@ library
     Data.ListP
     PPrEff
     PrEff
+    PrEff.Codensity.Reader
+    PrEff.Codensity.State
     PrEff.Parameterised.Array
     PrEff.Parameterised.NonDet
     PrEff.Parameterised.Protocol
