@@ -11,7 +11,7 @@ import qualified Prelude as P
 -- ------------------------------------------------
 
 type IMonad :: (p -> p -> Type -> Type) -> Constraint
-class (IApplicative m) => IMonad m where
+class IApplicative m => IMonad m where
   return :: a -> m i i a
   (>>=) :: m i j a -> (a -> m j k b) -> m i k b
   (>>) :: m i j a -> m j k b -> m i k b
