@@ -5,6 +5,8 @@ import PrEff hiding (send)
 import qualified PrEff
 import qualified Control.IxMonad as Ix
 import PrEff.Simple.State
+import GHC.TypeLits (KnownSymbol, symbolVal)
+import Data.Proxy
 
 -- type End :: Type
 data End
@@ -92,49 +94,49 @@ type family Dual proc where
   Dual (x: xs) = Dual' x : Dual xs
 
 send ::
-  forall a effs p.
+  forall a f p.
   a ->
-  PrEff effs Protocol (S a : p) p ()
+  PrEff f Protocol (S a : p) p ()
 send a = sendP (Send a)
 
 recv ::
-  forall a p effs.
-  PrEff effs Protocol (R a : p) p a
+  forall a p f.
+  PrEff f Protocol (R a : p) p a
 recv = sendP Recv
 
 sel1 ::
-  PrEff effs Protocol a '[End] x ->
-  PrEff effs Protocol (C a b : p) p x
+  PrEff f Protocol p' '[End] a ->
+  PrEff f Protocol (C p' b : r) r a
 sel1 act = sendScoped (Sel1 act)
 
 sel2 ::
-  PrEff effs Protocol b '[End] x ->
-  PrEff effs Protocol (C a b : p) p x
+  PrEff f Protocol p' '[End] a1 ->
+  PrEff f Protocol (C a2 p' : r) r a1
 sel2 act = sendScoped (Sel2 act)
 
 offer ::
-  PrEff effs Protocol a '[End] x ->
-  PrEff effs Protocol b '[End] x ->
-  PrEff effs Protocol (O a b : p) p x
+  PrEff f Protocol a1 '[End] a2 ->
+  PrEff f Protocol b '[End] a2 ->
+  PrEff f Protocol (O a1 b : r) r a2
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
-  PrEff effs Protocol a '[End] (Maybe x) ->
-  PrEff effs Protocol (SLU a: p) p [x]
+  PrEff f Protocol a '[End] (Maybe x) ->
+  PrEff f Protocol (SLU a: r) r [x]
 loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
-  PrEff effs Protocol a '[End] x ->
-  PrEff effs Protocol (CLU a: p) p [x]
+  PrEff f Protocol a '[End] x ->
+  PrEff f Protocol (CLU a: r) r [x]
 loopC act = sendScoped (LoopCUnbounded act)
 
-simpleServer :: PrEff effs Protocol '[S String, R String, End] '[End] String
+simpleServer :: PrEff f Protocol (S Int : R String : k) k String
 simpleServer = Ix.do
-  send "Ping"
-  s <- recv
+  send @Int 5
+  s <- recv @String
   pure s
 
-simpleClient :: PrEff effs Protocol '[R String, S String, End] '[End] String
+simpleClient :: PrEff f Protocol (R Int : S String : k) k ()
 simpleClient = Ix.do
   a <- recv
   send "Pong"
@@ -177,7 +179,7 @@ guessNumberServer = Ix.do
   pure $ length attempts
 
 
-serverLoop :: Member (State Int) effs => PrEff effs Protocol (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (State Int) f => PrEff f Protocol (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- get
@@ -190,7 +192,7 @@ serverLoop = Ix.do
       else
         pure $ Just n
 
-clientLoop :: PrEff effs Protocol (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: PrEff f Protocol (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -199,7 +201,7 @@ clientLoop = Ix.do
 
 choice ::
   PrEff
-    effs
+    f
     Protocol
     (S Int : C '[R Int, End] b : k)
     k
@@ -212,7 +214,7 @@ choice = Ix.do
 
 andOffer ::
   PrEff
-    effs
+    f
     Protocol
     (R Int : O '[S Int, End] '[S Int, End] : k)
     k
@@ -230,7 +232,7 @@ andOffer = Ix.do
 
 choice2 ::
   PrEff
-    effs
+    f
     Protocol
     (R Int : C '[R String, End] '[S String, R String, End] : k)
     k
@@ -251,7 +253,7 @@ choice2 = Ix.do
           pure x
 
 
-simpleLoopingClientServer :: Member (State Int) effs => PrEff effs IVoid () () ([()], [Int])
+simpleLoopingClientServer :: Member (State Int) f => PrEff f IVoid () () ([()], [Int])
 simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::
@@ -282,6 +284,7 @@ connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = 
       (a, b) <- connect act1 act2
       case a of
         Nothing -> pure (r1, b:r2)
+<<<<<<< Updated upstream
         Just a' -> go (a': r1, b:r2)
 connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = do
   (b, a) <- go ([], [])
@@ -291,6 +294,8 @@ connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = 
       (b, a) <- connect act1 act2
       case a of
         Nothing -> pure (r1, b:r2)
+=======
+>>>>>>> Stashed changes
         Just a' -> go (a': r1, b:r2)
 
 connect _ _ = error "Procol.connect: internal tree error"
@@ -298,9 +303,15 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
+<<<<<<< Updated upstream
   PrEff effs Protocol p1 '[End] a ->
   PrEff effs Protocol p2 '[End] b ->
   PrEff effs IVoid () () (a, b)
+=======
+  PrEff f Protocol p1 '[End] a ->
+  PrEff f Protocol p2 '[End] b ->
+  PrEff f IVoid () () (a, b)
+>>>>>>> Stashed changes
 connect' (Value x) (Value y) = pure (x, y)
 connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
 connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisli k1 ()) (runIKleisli k2 a)
