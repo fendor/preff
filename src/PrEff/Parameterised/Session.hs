@@ -6,15 +6,12 @@ import qualified PrEff
 import qualified Control.IxMonad as Ix
 import PrEff.Simple.State
 
-data End
 data S a
 data R a
 data C a b
 data O a b
-data SL n a
-data CL n a
-data SLU a
-data CLU a
+data SL a
+data CL a
 
 type Session ::
   forall k.
@@ -26,23 +23,26 @@ data Session p q r where
   Send :: a -> Session (S a : p) p ()
   Recv :: Session (R a : p) p a
 
+type End :: [Type]
+type End = '[]
+
 data instance ScopeE Session m p p' q' q x' x where
   Offer ::
-    m a '[End] x ->
-    m b '[End] x ->
-    ScopeE Session m (O a b : c) '[O a b] '[End] c x x
+    m a End x ->
+    m b End x ->
+    ScopeE Session m (O a b : c) '[O a b] End c x x
   Sel1 ::
-    m a '[End] x ->
-    ScopeE Session m (C a b : c) a '[End] c x x
+    m a End x ->
+    ScopeE Session m (C a b : c) a End c x x
   Sel2 ::
-    m b '[End] x ->
-    ScopeE Session m (C a b : c) b '[End] c x x
-  LoopSUnbounded ::
-    m a '[End] (Maybe x) ->
-    ScopeE Session m (SLU a : c) a '[End] c (Maybe x) [x]
-  LoopCUnbounded ::
-    m a '[End] x ->
-    ScopeE Session m (CLU a : r) a '[End] r x [x]
+    m b End x ->
+    ScopeE Session m (C a b : c) b End c x x
+  ServerLoop ::
+    m a End (Maybe x) ->
+    ScopeE Session m (SL a : c) a End c (Maybe x) [x]
+  ClientLoop ::
+    m a End x ->
+    ScopeE Session m (CL a : r) a End r x [x]
 
 -- myweave :: Functor ctx =>
 --   ctx () ->
@@ -82,9 +82,8 @@ type instance Dual' (R a) = S a
 type instance Dual' (S a) = R a
 type instance Dual' (O a b) = C (Dual a) (Dual b)
 type instance Dual' (C a b) = O (Dual a) (Dual b)
-type instance Dual' (CLU a) = SLU (Dual a)
-type instance Dual' (SLU a) = CLU (Dual a)
-type instance Dual' End = End
+type instance Dual' (CL a) = SL (Dual a)
+type instance Dual' (SL a) = CL (Dual a)
 
 type family Dual proc where
   Dual '[] = '[]
@@ -102,44 +101,38 @@ recv ::
 recv = sendP Recv
 
 sel1 ::
-  PrEff f Session a '[End] x ->
+  PrEff f Session a End x ->
   PrEff f Session (C a b : p) p x
 sel1 act = sendScoped (Sel1 act)
 
 sel2 ::
-  PrEff f Session b '[End] x ->
+  PrEff f Session b End x ->
   PrEff f Session (C a b : p) p x
 sel2 act = sendScoped (Sel2 act)
 
 offer ::
-  PrEff f Session a '[End] x ->
-  PrEff f Session b '[End] x ->
+  PrEff f Session a End x ->
+  PrEff f Session b End x ->
   PrEff f Session (O a b : p) p x
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
-  PrEff effs Session a '[End] (Maybe x) ->
-  PrEff effs Session (SLU a: p) p [x]
-loopS act = sendScoped (LoopSUnbounded act)
+  PrEff effs Session a End (Maybe x) ->
+  PrEff effs Session (SL a: p) p [x]
+loopS act = sendScoped (ServerLoop act)
 
 loopC ::
-  PrEff f Session a '[End] x ->
-  PrEff f Session (CLU a: p) p [x]
-loopC act = sendScoped (LoopCUnbounded act)
+  PrEff f Session a End x ->
+  PrEff f Session (CL a: p) p [x]
+loopC act = sendScoped (ClientLoop act)
 
-simpleServer :: PrEff f Session '[S String, R String, End] '[End] String
-simpleServer = Ix.do
-  send "Ping"
-  s <- recv @String
-  pure s
-
-simpleClient :: PrEff f Session '[R String, S String, End] '[End] String
+simpleClient :: PrEff f Session '[R String, S String] '[] String
 simpleClient = Ix.do
   a <- recv
   send "Pong"
   pure a
 
-stringOrInt :: PrEff f Session [O '[R String, End] '[R Int, End], End] '[End] String
+stringOrInt :: PrEff f Session '[O '[R String] '[R Int]] '[] String
 stringOrInt = Ix.do
   offer
     ( Ix.do
@@ -164,7 +157,7 @@ runRandomNumber = interpret $ \case
 
 guessNumberServer ::
   Member RandomNumber f =>
-  PrEff f Session '[SLU '[R Int, End], End] '[End] Int
+  PrEff f Session '[SL '[R Int]] '[] Int
 guessNumberServer = Ix.do
   num <- getNumber
   attempts <- loopS $ Ix.do
@@ -176,7 +169,7 @@ guessNumberServer = Ix.do
   pure $ length attempts
 
 
-serverLoop :: Member (State Int) f => PrEff f Session (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (State Int) f => PrEff f Session (SL '[S Int, R Int] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- get
@@ -189,7 +182,7 @@ serverLoop = Ix.do
       else
         pure $ Just n
 
-clientLoop :: PrEff f Session (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: PrEff f Session (CL '[R Int, S Int] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -200,7 +193,7 @@ choice ::
   PrEff
     f
     Session
-    (S Int : C '[R Int, End] b : k)
+    (S Int : C '[R Int] b : k)
     k
     Int
 choice = Ix.do
@@ -213,7 +206,7 @@ andOffer ::
   PrEff
     f
     Session
-    (R Int : O '[S Int, End] '[S Int, End] : k)
+    (R Int : O '[S Int] '[S Int] : k)
     k
     ()
 andOffer = Ix.do
@@ -231,7 +224,7 @@ choice2 ::
   PrEff
     f
     Session
-    (R Int : C '[R String, End] '[S String, R String, End] : k)
+    (R Int : C '[R String] '[S String, R String] : k)
     k
     String
 choice2 = Ix.do
@@ -255,8 +248,8 @@ simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff '[] Session p1 '[End] a ->
-  PrEff '[] Session p2 '[End] b ->
+  PrEff '[] Session p1 '[] a ->
+  PrEff '[] Session p2 '[] b ->
   PrEff '[] IVoid () () (a, b)
 connect (Value x) (Value y) = pure (x, y)
 connect (ImpureP Recv k1) (ImpureP (Send a) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
@@ -273,7 +266,7 @@ connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = do
 connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = do
+connect (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = do
   (a, b) <- go ([], [])
   connect (runIKleisli k1 a) (runIKleisli k2 b)
   where
@@ -282,7 +275,7 @@ connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = 
       case a of
         Nothing -> pure (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
-connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = do
+connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = do
   (b, a) <- go ([], [])
   connect (runIKleisli k1 a) (runIKleisli k2 b)
   where
@@ -297,8 +290,8 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff f Session p1 '[End] a ->
-  PrEff f Session p2 '[End] b ->
+  PrEff f Session p1 '[] a ->
+  PrEff f Session p2 '[] b ->
   PrEff f IVoid () () (a, b)
 connect' (Value x) (Value y) = pure (x, y)
 connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
@@ -315,7 +308,7 @@ connect' (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
 connect' (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
   (a, b) <- connect' act1 act2
   connect' (runIKleisli k1 a) (runIKleisli k2 b)
-connect' (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = Ix.do
+connect' (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect' (runIKleisli k1 a) (runIKleisli k2 b)
   where
@@ -324,7 +317,7 @@ connect' (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) =
       case a of
         Nothing -> pure (r1, b:r2)
         Just a' -> go (a': r1, b:r2)
-connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = Ix.do
+connect' (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect' (runIKleisli k1 a) (runIKleisli k2 b)
   where
@@ -337,3 +330,25 @@ connect' (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) =
 connect' (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect' (runIKleisli k1 x) k2
 connect' k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect' k1 (runIKleisli  k2 x)
 connect' _ _ = error "Procol.connect: internal tree error"
+
+-- ----------------------------------------------------------------------
+-- Experimental API
+-- ----------------------------------------------------------------------
+
+
+simpleServer :: SPrEff f '[S String, R String] String
+simpleServer = Ix.do
+  send "Ping"
+  s <- recv @String
+  pure s
+
+simpleServerTwice :: SPrEff f '[S String, R String, S String, R String] String
+simpleServerTwice = Ix.do
+  simpleServer
+  simpleServer
+
+type family Concat s tail where
+  Concat '[] t = t
+  Concat (x ': xs) t = x : Concat xs t
+
+type SPrEff f session a = forall k . PrEff f Session (Concat session k) k a
