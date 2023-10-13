@@ -114,13 +114,13 @@ type ScopeE :: forall k. (k -> k -> Type -> Type) -> (k -> k -> Type -> Type) ->
 data family ScopeE s
 
 type ScopedEffect :: forall k. (k -> k -> Type -> Type) -> Constraint
-class ScopedEffect f where
+class ScopedEffect s where
   weave ::
     (Functor c) =>
     c () ->
     (forall r u v. c (m u v r) -> n u v (c r)) ->
-    ScopeE f m p p' q' q x x' ->
-    ScopeE f n p p' q' q (c x) (c x')
+    ScopeE s m p p' q' q x x' ->
+    ScopeE s n p p' q' q (c x) (c x')
 
 -- ------------------------------------------------
 -- Utility functions
@@ -197,7 +197,7 @@ type (~>) f g = forall x. f x -> g x
 {-# INLINABLE reinterpret2 #-}
 {-# INLINABLE interpretStateful #-}
 
-interpret :: (ScopedEffect f) => (forall u. eff ~> PrEff effs f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs f p q
+interpret :: (ScopedEffect s) => (forall u. eff ~> PrEff f s u u) -> PrEff (eff ': f) s p q ~> PrEff f s p q
 interpret handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -214,16 +214,16 @@ interpret handler = \case
    where
     emptyCtx = ((), ())
 
-reinterpret :: (ScopedEffect f) => (forall u. eff ~> PrEff (newEff : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (newEff : effs) f p q
+reinterpret :: (ScopedEffect s) => (forall u. eff ~> PrEff (newEff : f) s u u) -> PrEff (eff ': f) s p q ~> PrEff (newEff : f) s p q
 reinterpret = reinterpretN weaken
 
-reinterpret2 :: (ScopedEffect f) => (forall u. eff ~> PrEff (e1 : e2 : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : effs) f p q
+reinterpret2 :: (ScopedEffect s) => (forall u. eff ~> PrEff (e1 : e2 : f) s u u) -> PrEff (eff ': f) s p q ~> PrEff (e1 : e2 : f) s p q
 reinterpret2 = reinterpretN (weaken . weaken)
 
-reinterpret3 :: (ScopedEffect f) => (forall u. eff ~> PrEff (e1 : e2 : e3: effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : e3: effs) f p q
+reinterpret3 :: (ScopedEffect s) => (forall u. eff ~> PrEff (e1 : e2 : e3: f) s u u) -> PrEff (eff ': f) s p q ~> PrEff (e1 : e2 : e3: f) s p q
 reinterpret3 = reinterpretN (weaken . weaken . weaken)
 
-reinterpretN :: (ScopedEffect f) => (forall x . Op effs x -> Op effs2 x) -> (forall u. eff ~> PrEff effs2 f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs2 f p q
+reinterpretN :: (ScopedEffect s) => (forall x . Op f x -> Op fNew x) -> (forall u. eff ~> PrEff fNew s u u) -> PrEff (eff ': f) s p q ~> PrEff fNew s p q
 reinterpretN weakenF handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
@@ -241,11 +241,11 @@ reinterpretN weakenF handler = \case
     emptyCtx = ((), ())
 
 interpretStateful ::
-  (ScopedEffect f) =>
-  s ->
-  (forall v x. s -> eff x -> PrEff effs f v v (s, x)) ->
-  PrEff (eff : effs) f ps qs a ->
-  PrEff effs f ps qs (s, a)
+  ScopedEffect s =>
+  e ->
+  (forall v x. e -> eff x -> PrEff f s v v (e, x)) ->
+  PrEff (eff : f) s ps qs a ->
+  PrEff f s ps qs (e, a)
 interpretStateful !s _hdl (Value a) = pure (s, a)
 interpretStateful !s handler (Impure (OHere op) k) = Ix.do
   (newS, x) <- handler s op
