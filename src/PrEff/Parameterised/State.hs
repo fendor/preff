@@ -129,3 +129,18 @@ runStateP' p = \case
     ZoomP f restore act -> do
       (q', a) <- runStateP' (f p) act
       runStateP' (restore q') (k a)
+
+runStateP'' ::
+  p ->
+  PrEff f StateP p q a ->
+  PrEff f IVoid () () (a, q)
+runStateP'' =
+  interpretStatefulScoped
+    do \s -> \case
+        PutP s' -> pure (s', ())
+        GetP -> pure (s, s)
+
+    do \continue run s -> \case
+        ZoomP f restore act -> do
+          (x, q) <- run (f s) act
+          run (restore q) $ continue  x

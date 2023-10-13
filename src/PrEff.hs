@@ -215,36 +215,28 @@ interpret handler = \case
     emptyCtx = ((), ())
 
 reinterpret :: (ScopedEffect f) => (forall u. eff ~> PrEff (newEff : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (newEff : effs) f p q
-reinterpret handler = \case
-  Value a -> Value a
-  Impure (OHere op) k -> Ix.do
-    x <- handler op
-    reinterpret handler (runIKleisli k x)
-  Impure (OThere op) k ->
-    Impure (weaken op) (iKleisli $ \x -> reinterpret handler (runIKleisli k x))
-  ImpureP op k ->
-    ImpureP op (iKleisli $ \x -> reinterpret handler (runIKleisli k x))
-  ScopedP op k ->
-    ScopedP
-      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret handler m) op)
-      (iKleisli $ \(_, x) -> reinterpret handler (runIKleisli k x))
-   where
-    emptyCtx = ((), ())
+reinterpret = reinterpretN weaken
 
 reinterpret2 :: (ScopedEffect f) => (forall u. eff ~> PrEff (e1 : e2 : effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : effs) f p q
-reinterpret2 handler = \case
+reinterpret2 = reinterpretN (weaken . weaken)
+
+reinterpret3 :: (ScopedEffect f) => (forall u. eff ~> PrEff (e1 : e2 : e3: effs) f u u) -> PrEff (eff ': effs) f p q ~> PrEff (e1 : e2 : e3: effs) f p q
+reinterpret3 = reinterpretN (weaken . weaken . weaken)
+
+reinterpretN :: (ScopedEffect f) => (forall x . Op effs x -> Op effs2 x) -> (forall u. eff ~> PrEff effs2 f u u) -> PrEff (eff ': effs) f p q ~> PrEff effs2 f p q
+reinterpretN weakenF handler = \case
   Value a -> Value a
   Impure (OHere op) k -> Ix.do
     x <- handler op
-    reinterpret2 handler (runIKleisli k x)
+    reinterpretN weakenF handler (runIKleisli k x)
   Impure (OThere op) k ->
-    Impure (weaken $ weaken op) (iKleisli $ \x -> reinterpret2 handler (runIKleisli k x))
+    Impure (weakenF op) (iKleisli $ \x -> reinterpretN weakenF handler (runIKleisli k x))
   ImpureP op k ->
-    ImpureP op (iKleisli $ \x -> reinterpret2 handler (runIKleisli k x))
+    ImpureP op (iKleisli $ \x -> reinterpretN weakenF handler (runIKleisli k x))
   ScopedP op k ->
     ScopedP
-      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpret2 handler m) op)
-      (iKleisli $ \(_, x) -> reinterpret2 handler (runIKleisli k x))
+      (weave emptyCtx (\((), m) -> Ix.imap ((),) $ reinterpretN weakenF handler m) op)
+      (iKleisli $ \(_, x) -> reinterpretN weakenF handler (runIKleisli k x))
    where
     emptyCtx = ((), ())
 
