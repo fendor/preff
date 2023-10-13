@@ -1,14 +1,11 @@
-module PrEff.Parameterised.Protocol where
+module PrEff.Parameterised.Session where
 
 import Data.Kind
 import PrEff hiding (send)
 import qualified PrEff
 import qualified Control.IxMonad as Ix
 import PrEff.Simple.State
-import GHC.TypeLits (KnownSymbol, symbolVal)
-import Data.Proxy
 
--- type End :: Type
 data End
 data S a
 data R a
@@ -19,40 +16,40 @@ data CL n a
 data SLU a
 data CLU a
 
-type Protocol ::
+type Session ::
   forall k.
   [k] ->
   [k] ->
   Type ->
   Type
-data Protocol p q r where
-  Send :: a -> Protocol (S a : p) p ()
-  Recv :: Protocol (R a : p) p a
+data Session p q r where
+  Send :: a -> Session (S a : p) p ()
+  Recv :: Session (R a : p) p a
 
-data instance ScopeE Protocol m p p' q' q x' x where
+data instance ScopeE Session m p p' q' q x' x where
   Offer ::
     m a '[End] x ->
     m b '[End] x ->
-    ScopeE Protocol m (O a b : c) '[O a b] '[End] c x x
+    ScopeE Session m (O a b : c) '[O a b] '[End] c x x
   Sel1 ::
     m a '[End] x ->
-    ScopeE Protocol m (C a b : c) a '[End] c x x
+    ScopeE Session m (C a b : c) a '[End] c x x
   Sel2 ::
     m b '[End] x ->
-    ScopeE Protocol m (C a b : c) b '[End] c x x
+    ScopeE Session m (C a b : c) b '[End] c x x
   LoopSUnbounded ::
     m a '[End] (Maybe x) ->
-    ScopeE Protocol m (SLU a : c) a '[End] c (Maybe x) [x]
+    ScopeE Session m (SLU a : c) a '[End] c (Maybe x) [x]
   LoopCUnbounded ::
     m a '[End] x ->
-    ScopeE Protocol m (CLU a : r) a '[End] r x [x]
+    ScopeE Session m (CLU a : r) a '[End] r x [x]
 
 -- myweave :: Functor ctx =>
 --   ctx () ->
 --   -- natural transformation
 --   (forall r u v. ctx (m u v r) -> n u v (ctx r)) ->
---   ScopeE Protocol m p p' q' q x x' ->
---   ScopeE Protocol n p p' q' q (ctx x) (ctx x')
+--   ScopeE Session m p p' q' q x x' ->
+--   ScopeE Session n p p' q' q (ctx x) (ctx x')
 -- myweave ctx nt = \case
 --   LoopCUnbounded m ->
 --     let
@@ -96,53 +93,53 @@ type family Dual proc where
 send ::
   forall a f p.
   a ->
-  PrEff f Protocol (S a : p) p ()
+  PrEff f Session (S a : p) p ()
 send a = sendP (Send a)
 
 recv ::
   forall a p f.
-  PrEff f Protocol (R a : p) p a
+  PrEff f Session (R a : p) p a
 recv = sendP Recv
 
 sel1 ::
-  PrEff f Protocol p' '[End] a ->
-  PrEff f Protocol (C p' b : r) r a
+  PrEff f Session a '[End] x ->
+  PrEff f Session (C a b : p) p x
 sel1 act = sendScoped (Sel1 act)
 
 sel2 ::
-  PrEff f Protocol p' '[End] a1 ->
-  PrEff f Protocol (C a2 p' : r) r a1
+  PrEff f Session b '[End] x ->
+  PrEff f Session (C a b : p) p x
 sel2 act = sendScoped (Sel2 act)
 
 offer ::
-  PrEff f Protocol a1 '[End] a2 ->
-  PrEff f Protocol b '[End] a2 ->
-  PrEff f Protocol (O a1 b : r) r a2
+  PrEff f Session a '[End] x ->
+  PrEff f Session b '[End] x ->
+  PrEff f Session (O a b : p) p x
 offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
-  PrEff f Protocol a '[End] (Maybe x) ->
-  PrEff f Protocol (SLU a: r) r [x]
+  PrEff effs Session a '[End] (Maybe x) ->
+  PrEff effs Session (SLU a: p) p [x]
 loopS act = sendScoped (LoopSUnbounded act)
 
 loopC ::
-  PrEff f Protocol a '[End] x ->
-  PrEff f Protocol (CLU a: r) r [x]
+  PrEff f Session a '[End] x ->
+  PrEff f Session (CLU a: p) p [x]
 loopC act = sendScoped (LoopCUnbounded act)
 
-simpleServer :: PrEff f Protocol (S Int : R String : k) k String
+simpleServer :: PrEff f Session '[S String, R String, End] '[End] String
 simpleServer = Ix.do
-  send @Int 5
+  send "Ping"
   s <- recv @String
   pure s
 
-simpleClient :: PrEff f Protocol (R Int : S String : k) k ()
+simpleClient :: PrEff f Session '[R String, S String, End] '[End] String
 simpleClient = Ix.do
   a <- recv
   send "Pong"
   pure a
 
-stringOrInt :: PrEff f Protocol [O '[R String, End] '[R Int, End], End] '[End] String
+stringOrInt :: PrEff f Session [O '[R String, End] '[R Int, End], End] '[End] String
 stringOrInt = Ix.do
   offer
     ( Ix.do
@@ -167,7 +164,7 @@ runRandomNumber = interpret $ \case
 
 guessNumberServer ::
   Member RandomNumber f =>
-  PrEff f Protocol '[SLU '[R Int, End], End] '[End] Int
+  PrEff f Session '[SLU '[R Int, End], End] '[End] Int
 guessNumberServer = Ix.do
   num <- getNumber
   attempts <- loopS $ Ix.do
@@ -179,7 +176,7 @@ guessNumberServer = Ix.do
   pure $ length attempts
 
 
-serverLoop :: Member (State Int) f => PrEff f Protocol (SLU '[S Int, R Int, End] : r) r [Int]
+serverLoop :: Member (State Int) f => PrEff f Session (SLU '[S Int, R Int, End] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- get
@@ -192,7 +189,7 @@ serverLoop = Ix.do
       else
         pure $ Just n
 
-clientLoop :: PrEff f Protocol (CLU '[R Int, S Int, End] : r) r [()]
+clientLoop :: PrEff f Session (CLU '[R Int, S Int, End] : r) r [()]
 clientLoop = Ix.do
   loopC $ Ix.do
     n :: Int <- recv
@@ -202,7 +199,7 @@ clientLoop = Ix.do
 choice ::
   PrEff
     f
-    Protocol
+    Session
     (S Int : C '[R Int, End] b : k)
     k
     Int
@@ -215,7 +212,7 @@ choice = Ix.do
 andOffer ::
   PrEff
     f
-    Protocol
+    Session
     (R Int : O '[S Int, End] '[S Int, End] : k)
     k
     ()
@@ -233,7 +230,7 @@ andOffer = Ix.do
 choice2 ::
   PrEff
     f
-    Protocol
+    Session
     (R Int : C '[R String, End] '[S String, R String, End] : k)
     k
     String
@@ -258,12 +255,12 @@ simpleLoopingClientServer = connect' clientLoop serverLoop
 
 connect ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff '[] Protocol p1 '[End] a ->
-  PrEff '[] Protocol p2 '[End] b ->
+  PrEff '[] Session p1 '[End] a ->
+  PrEff '[] Session p2 '[End] b ->
   PrEff '[] IVoid () () (a, b)
 connect (Value x) (Value y) = pure (x, y)
-connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
-connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
+connect (ImpureP Recv k1) (ImpureP (Send a) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
+connect (ImpureP (Send a) k1) (ImpureP Recv k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
 connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
@@ -284,7 +281,6 @@ connect (ScopedP (LoopSUnbounded act1) k1) (ScopedP (LoopCUnbounded act2) k2) = 
       (a, b) <- connect act1 act2
       case a of
         Nothing -> pure (r1, b:r2)
-<<<<<<< Updated upstream
         Just a' -> go (a': r1, b:r2)
 connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = do
   (b, a) <- go ([], [])
@@ -294,8 +290,6 @@ connect (ScopedP (LoopCUnbounded act1) k1) (ScopedP (LoopSUnbounded act2) k2) = 
       (b, a) <- connect act1 act2
       case a of
         Nothing -> pure (r1, b:r2)
-=======
->>>>>>> Stashed changes
         Just a' -> go (a': r1, b:r2)
 
 connect _ _ = error "Procol.connect: internal tree error"
@@ -303,15 +297,9 @@ connect _ _ = error "Procol.connect: internal tree error"
 
 connect' ::
   (Dual p1 ~ p2, Dual p2 ~ p1) =>
-<<<<<<< Updated upstream
-  PrEff effs Protocol p1 '[End] a ->
-  PrEff effs Protocol p2 '[End] b ->
-  PrEff effs IVoid () () (a, b)
-=======
-  PrEff f Protocol p1 '[End] a ->
-  PrEff f Protocol p2 '[End] b ->
+  PrEff f Session p1 '[End] a ->
+  PrEff f Session p2 '[End] b ->
   PrEff f IVoid () () (a, b)
->>>>>>> Stashed changes
 connect' (Value x) (Value y) = pure (x, y)
 connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
 connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisli k1 ()) (runIKleisli k2 a)

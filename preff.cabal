@@ -55,8 +55,8 @@ library
     PrEff.Codensity.State
     PrEff.Parameterised.Array
     PrEff.Parameterised.NonDet
-    PrEff.Parameterised.Protocol
     PrEff.Parameterised.Reader
+    PrEff.Parameterised.Session
     PrEff.Parameterised.State
     PrEff.Simple.Examples
     PrEff.Simple.Reader

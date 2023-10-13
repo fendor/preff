@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE EmptyCase #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 module PrEff where
 

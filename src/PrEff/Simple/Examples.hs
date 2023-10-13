@@ -6,7 +6,7 @@ import Fcf
 import GHC.TypeLits
 import PrEff.Simple.Reader
 import PrEff.Simple.State
-import PrEff.Parameterised.Protocol
+import PrEff.Parameterised.Session
 import PrEff
 import qualified Control.IxMonad as Ix
 
