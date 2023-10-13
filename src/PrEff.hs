@@ -1,7 +1,6 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE EmptyCase #-}
-{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 module PrEff where
 
@@ -584,6 +583,10 @@ type family Assume ind ps where
   Assume _ '[] = TypeError (Text "This sucks")
   Assume 0 (x : xs) = x
   Assume n (x : xs) = Assume (n - 1) xs
+
+type family Concat s tail where
+  Concat '[] t = t
+  Concat (x ': xs) t = x : Concat xs t
 
 class Member eff f where
   inj :: eff a -> Op f a

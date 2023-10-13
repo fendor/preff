@@ -347,8 +347,4 @@ simpleServerTwice = Ix.do
   simpleServer
   simpleServer
 
-type family Concat s tail where
-  Concat '[] t = t
-  Concat (x ': xs) t = x : Concat xs t
-
 type SPrEff f session a = forall k . PrEff f Session (Concat session k) k a
