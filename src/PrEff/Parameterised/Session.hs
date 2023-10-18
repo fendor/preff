@@ -44,38 +44,6 @@ data instance ScopeE Session m p p' q' q x' x where
     m a End x ->
     ScopeE Session m (CL a : r) a End r x [x]
 
--- myweave :: Functor ctx =>
---   ctx () ->
---   -- natural transformation
---   (forall r u v. ctx (m u v r) -> n u v (ctx r)) ->
---   ScopeE Session m p p' q' q x x' ->
---   ScopeE Session n p p' q' q (ctx x) (ctx x')
--- myweave ctx nt = \case
---   LoopCUnbounded m ->
---     let
---       n = nt (m <$ ctx)
---     in LoopCUnbounded n
---   LoopSUnbounded m ->
---     let
---       n = nt (m <$ ctx)
---     in LoopSUnbounded n
---   Sel1 m ->
---     let
---       n = nt (m <$ ctx)
---     in
---       Sel1 n
---   Sel2 m ->
---     let
---       n = nt (m <$ ctx)
---     in
---       Sel2 n
-
---   Offer m1 m2 ->
---     let
---       n1 = nt (m1 <$ ctx)
---       n2 = nt (m2 <$ ctx)
---     in
---       Offer n1 n2
 
 type family Dual' proc
 type instance Dual' (R a) = S a
@@ -125,6 +93,67 @@ loopC ::
   PrEff f Session a End x ->
   PrEff f Session (CL a: p) p [x]
 loopC act = sendScoped (ClientLoop act)
+
+connect ::
+  (Dual p1 ~ p2, Dual p2 ~ p1) =>
+  PrEff f Session p1 '[] a ->
+  PrEff f Session p2 '[] b ->
+  PrEff f IVoid () () (a, b)
+connect (Value x) (Value y) = pure (x, y)
+connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
+connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
+connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
+  (a, b) <- connect act1 act2
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
+  (a, b) <- connect act1 act2
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
+  (a, b) <- connect act1 act2
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
+  (a, b) <- connect act1 act2
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+connect (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = Ix.do
+  (a, b) <- go ([], [])
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+  where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect act1 act2
+      case a of
+        Nothing -> pure (r1, b:r2)
+        Just a' -> go (a': r1, b:r2)
+connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
+  (a, b) <- go ([], [])
+  connect (runIKleisli k1 a) (runIKleisli k2 b)
+  where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect act1 act2
+      case b of
+        Nothing -> pure (a:r1, r2)
+        Just b' -> go (a: r1, b':r2)
+
+connect (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect (runIKleisli k1 x) k2
+connect k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect k1 (runIKleisli  k2 x)
+connect _ _ = error "Procol.connect: internal tree error"
+
+-- ----------------------------------------------------------------------
+-- Experimental API
+-- ----------------------------------------------------------------------
+
+
+simpleServer :: SPrEff f '[S String, R String] String
+simpleServer = Ix.do
+  send "Ping"
+  s <- recv @String
+  pure s
+
+simpleServerTwice :: SPrEff f '[S String, R String, S String, R String] String
+simpleServerTwice = Ix.do
+  simpleServer
+  simpleServer
+
+type SPrEff f session a = forall k . PrEff f Session (Concat session k) k a
 
 simpleClient :: PrEff f Session '[R String, S String] '[] String
 simpleClient = Ix.do
@@ -244,107 +273,5 @@ choice2 = Ix.do
 
 
 simpleLoopingClientServer :: Member (State Int) f => PrEff f IVoid () () ([()], [Int])
-simpleLoopingClientServer = connect' clientLoop serverLoop
+simpleLoopingClientServer = connect clientLoop serverLoop
 
-connect ::
-  (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff '[] Session p1 '[] a ->
-  PrEff '[] Session p2 '[] b ->
-  PrEff '[] IVoid () () (a, b)
-connect (Value x) (Value y) = pure (x, y)
-connect (ImpureP Recv k1) (ImpureP (Send a) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
-connect (ImpureP (Send a) k1) (ImpureP Recv k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
-connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = do
-  (a, b) <- go ([], [])
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = do
-      (a, b) <- connect act1 act2
-      case a of
-        Nothing -> pure (r1, b:r2)
-        Just a' -> go (a': r1, b:r2)
-connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = do
-  (b, a) <- go ([], [])
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = do
-      (b, a) <- connect act1 act2
-      case a of
-        Nothing -> pure (r1, b:r2)
-        Just a' -> go (a': r1, b:r2)
-
-connect _ _ = error "Procol.connect: internal tree error"
-
-
-connect' ::
-  (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff f Session p1 '[] a ->
-  PrEff f Session p2 '[] b ->
-  PrEff f IVoid () () (a, b)
-connect' (Value x) (Value y) = pure (x, y)
-connect' (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect' (runIKleisli k1 a) (runIKleisli k2 ())
-connect' (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect' (runIKleisli k1 ()) (runIKleisli k2 a)
-connect' (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
-  (a, b) <- connect' act1 act2
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-connect' (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
-  (a, b) <- connect' act1 act2
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-connect' (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
-  (a, b) <- connect' act1 act2
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-connect' (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
-  (a, b) <- connect' act1 act2
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-connect' (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = Ix.do
-  (a, b) <- go ([], [])
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = Ix.do
-      (a, b) <- connect' act1 act2
-      case a of
-        Nothing -> pure (r1, b:r2)
-        Just a' -> go (a': r1, b:r2)
-connect' (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
-  (a, b) <- go ([], [])
-  connect' (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = Ix.do
-      (a, b) <- connect' act1 act2
-      case b of
-        Nothing -> pure (a:r1, r2)
-        Just b' -> go (a: r1, b':r2)
-
-connect' (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect' (runIKleisli k1 x) k2
-connect' k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect' k1 (runIKleisli  k2 x)
-connect' _ _ = error "Procol.connect: internal tree error"
-
--- ----------------------------------------------------------------------
--- Experimental API
--- ----------------------------------------------------------------------
-
-
-simpleServer :: SPrEff f '[S String, R String] String
-simpleServer = Ix.do
-  send "Ping"
-  s <- recv @String
-  pure s
-
-simpleServerTwice :: SPrEff f '[S String, R String, S String, R String] String
-simpleServerTwice = Ix.do
-  simpleServer
-  simpleServer
-
-type SPrEff f session a = forall k . PrEff f Session (Concat session k) k a
