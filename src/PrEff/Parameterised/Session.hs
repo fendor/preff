@@ -1,9 +1,9 @@
 module PrEff.Parameterised.Session where
 
+import qualified Control.IxMonad as Ix
 import Data.Kind
 import PrEff hiding (send)
 import qualified PrEff
-import qualified Control.IxMonad as Ix
 import PrEff.Simple.State
 
 data S a
@@ -44,7 +44,6 @@ data instance ScopeE Session m p p' q' q x' x where
     m a End x ->
     ScopeE Session m (CL a : r) a End r x [x]
 
-
 type family Dual' proc
 type instance Dual' (R a) = S a
 type instance Dual' (S a) = R a
@@ -55,7 +54,7 @@ type instance Dual' (SL a) = CL (Dual a)
 
 type family Dual proc where
   Dual '[] = '[]
-  Dual (x: xs) = Dual' x : Dual xs
+  Dual (x : xs) = Dual' x : Dual xs
 
 send ::
   forall a f p.
@@ -86,12 +85,12 @@ offer s1 s2 = sendScoped (Offer s1 s2)
 
 loopS ::
   PrEff effs Session a End (Maybe x) ->
-  PrEff effs Session (SL a: p) p [x]
+  PrEff effs Session (SL a : p) p [x]
 loopS act = sendScoped (ServerLoop act)
 
--- loopC ::
---   PrEff f Session a End x ->
---   PrEff f Session (CL a: p) p [x]
+loopC ::
+  PrEff f Session a End x ->
+  PrEff f Session (CL a : p) p [x]
 loopC act = sendScoped (ClientLoop act)
 
 connect ::
@@ -120,24 +119,23 @@ connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
 connect (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = Ix.do
-      (a, b) <- connect act1 act2
-      case a of
-        Nothing -> pure (r1, b:r2)
-        Just a' -> go (a': r1, b:r2)
+ where
+  go (r1, r2) = Ix.do
+    (a, b) <- connect act1 act2
+    case a of
+      Nothing -> pure (r1, b : r2)
+      Just a' -> go (a' : r1, b : r2)
 connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
   (a, b) <- go ([], [])
   connect (runIKleisli k1 a) (runIKleisli k2 b)
-  where
-    go (r1, r2) = Ix.do
-      (a, b) <- connect act1 act2
-      case b of
-        Nothing -> pure (a:r1, r2)
-        Just b' -> go (a: r1, b':r2)
-
+ where
+  go (r1, r2) = Ix.do
+    (a, b) <- connect act1 act2
+    case b of
+      Nothing -> pure (a : r1, r2)
+      Just b' -> go (a : r1, b' : r2)
 connect (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect (runIKleisli k1 x) k2
-connect k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect k1 (runIKleisli  k2 x)
+connect k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect k1 (runIKleisli k2 x)
 connect _ _ = error "Protocol.connect: internal tree error"
 
 -- ----------------------------------------------------------------------
@@ -155,7 +153,7 @@ simpleServerTwice = Ix.do
   simpleServer
   simpleServer
 
-type SPrEff f session a = forall k . PrEff f Session (Concat session k) k a
+type SPrEff f session a = forall k. PrEff f Session (Concat session k) k a
 
 simpleClient :: PrEff f Session '[R String, S String] '[] String
 simpleClient = Ix.do
@@ -178,16 +176,16 @@ stringOrInt = Ix.do
 data RandomNumber a where
   GetNumber :: RandomNumber Int
 
-getNumber :: Member RandomNumber f => PrEff f s p p Int
+getNumber :: (Member RandomNumber f) => PrEff f s p p Int
 getNumber = PrEff.send GetNumber
 
-runRandomNumber :: ScopedEffect s => PrEff (RandomNumber : effs) s p q x -> PrEff effs s p q x
+runRandomNumber :: (ScopedEffect s) => PrEff (RandomNumber : effs) s p q x -> PrEff effs s p q x
 runRandomNumber = interpret $ \case
   -- Chosen by fair dice roll
   GetNumber -> pure 4
 
 guessNumberServer ::
-  Member RandomNumber f =>
+  (Member RandomNumber f) =>
   PrEff f Session '[SL '[R Int]] '[] Int
 guessNumberServer = Ix.do
   num <- getNumber
@@ -199,8 +197,7 @@ guessNumberServer = Ix.do
 
   pure $ length attempts
 
-
-serverLoop :: Member (State Int) f => PrEff f Session (SL '[S Int, R Int] : r) r [Int]
+serverLoop :: (Member (State Int) f) => PrEff f Session (SL '[S Int, R Int] : r) r [Int]
 serverLoop = Ix.do
   loopS $ Ix.do
     x <- get
@@ -208,10 +205,8 @@ serverLoop = Ix.do
     n :: Int <- recv
     put n
     if n < 10
-      then
-        pure Nothing
-      else
-        pure $ Just n
+      then pure Nothing
+      else pure $ Just n
 
 clientLoop :: PrEff f Session (CL '[R Int, S Int] : r) r [()]
 clientLoop = Ix.do
@@ -260,20 +255,16 @@ choice2 ::
     String
 choice2 = Ix.do
   n <- recv @Int
-  if
-    (n < 0)
+  if (n < 0)
     then Ix.do
-        sel1 $ Ix.do
-          x <- recv @String
-          pure x
-
+      sel1 $ Ix.do
+        x <- recv @String
+        pure x
     else Ix.do
-        sel2 $ Ix.do
-          send @String "Test"
-          x <- recv @String
-          pure x
+      sel2 $ Ix.do
+        send @String "Test"
+        x <- recv @String
+        pure x
 
-
-simpleLoopingClientServer :: Member (State Int) f => PrEff f IVoid () () ([()], [Int])
+simpleLoopingClientServer :: (Member (State Int) f) => PrEff f IVoid () () ([()], [Int])
 simpleLoopingClientServer = connect clientLoop serverLoop
-
