@@ -89,9 +89,9 @@ loopS ::
   PrEff effs Session (SL a: p) p [x]
 loopS act = sendScoped (ServerLoop act)
 
-loopC ::
-  PrEff f Session a End x ->
-  PrEff f Session (CL a: p) p [x]
+-- loopC ::
+--   PrEff f Session a End x ->
+--   PrEff f Session (CL a: p) p [x]
 loopC act = sendScoped (ClientLoop act)
 
 connect ::
@@ -99,9 +99,12 @@ connect ::
   PrEff f Session p1 '[] a ->
   PrEff f Session p2 '[] b ->
   PrEff f IVoid () () (a, b)
-connect (Value x) (Value y) = pure (x, y)
-connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) = connect (runIKleisli k1 a) (runIKleisli k2 ())
-connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) = connect (runIKleisli k1 ()) (runIKleisli k2 a)
+connect (Value x) (Value y) =
+  pure (x, y)
+connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) =
+  connect (runIKleisli k1 a) (runIKleisli k2 ())
+connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) =
+  connect (runIKleisli k1 ()) (runIKleisli k2 a)
 connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
   (a, b) <- connect act1 act2
   connect (runIKleisli k1 a) (runIKleisli k2 b)
@@ -135,12 +138,11 @@ connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
 
 connect (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect (runIKleisli k1 x) k2
 connect k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect k1 (runIKleisli  k2 x)
-connect _ _ = error "Procol.connect: internal tree error"
+connect _ _ = error "Protocol.connect: internal tree error"
 
 -- ----------------------------------------------------------------------
 -- Experimental API
 -- ----------------------------------------------------------------------
-
 
 simpleServer :: SPrEff f '[S String, R String] String
 simpleServer = Ix.do

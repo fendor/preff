@@ -15,14 +15,6 @@ import qualified Prelude as P
 -- Main Effect monad
 -- ------------------------------------------------
 
-type Op ::
-  [Type -> Type] ->
-  Type ->
-  Type
-data Op f x where
-  OHere :: eff x -> Op (eff : f) x
-  OThere :: Op f x -> Op (eff : f) x
-
 type PrEff ::
   forall k.
   [Type -> Type] ->
@@ -107,6 +99,26 @@ transformKleisli ::
 transformKleisli f k = iKleisli $ f . runIKleisli k
 
 -- ------------------------------------------------
+-- Open union
+-- ------------------------------------------------
+
+type Op ::
+  [Type -> Type] ->
+  Type ->
+  Type
+data Op f x where
+  OHere :: eff x -> Op (eff : f) x
+  OThere :: Op f x -> Op (eff : f) x
+
+{- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
+more summand.
+
+/O(1)/
+-}
+weaken :: Op xs a -> Op (x : xs) a
+weaken op = OThere op
+
+-- ------------------------------------------------
 -- Scoped Algebras
 -- ------------------------------------------------
 
@@ -116,11 +128,63 @@ data family ScopeE s
 type ScopedEffect :: forall k. (k -> k -> Type -> Type) -> Constraint
 class ScopedEffect s where
   weave ::
-    (Functor c) =>
-    c () ->
-    (forall r u v. c (m u v r) -> n u v (c r)) ->
+    (Functor ctx, IFunctor n, IFunctor m) =>
+    ctx () ->
+    (forall u v r. ctx (m u v r) -> n u v (ctx r)) ->
     ScopeE s m p p' q' q x x' ->
-    ScopeE s n p p' q' q (c x) (c x')
+    ScopeE s n p p' q' q (ctx x) (ctx x')
+
+-- ------------------------------------------------
+-- Base Scoped Effects and instances
+-- ------------------------------------------------
+
+data IVoid p q a
+
+algIVoid :: AlgP IVoid
+algIVoid = \case
+
+algScopedIVoid :: AlgScoped IVoid
+algScopedIVoid = \case
+
+genIVoid :: Gen a a
+genIVoid x = x
+
+instance ScopedEffect IVoid where
+  weave _ctx _nt s = absurdS s
+
+absurdS :: ScopeE IVoid m p p' q' q x x' -> a
+absurdS = \case
+
+data instance ScopeE IVoid m p p' q' q x' x
+
+-- ------------------------------------------------
+-- Member type class
+-- ------------------------------------------------
+
+class Member eff f where
+  inj :: eff a -> Op f a
+
+instance {-# OVERLAPPING #-} Member e (e ': effs) where
+  inj :: f a -> Op (f : effs) a
+  inj e = OHere e
+
+instance Member eff f => Member eff (e ': f) where
+  inj = OThere . inj
+
+instance
+  ( TypeError
+      ( Text "Failed to resolve effect "
+          :<>: ShowType e
+          :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
+      )
+  ) =>
+  Member e '[]
+  where
+  inj = error "The instance of Member e '[] must never be selected"
+
+type family Members fs effs where
+  Members (f ': fs) effs = (Member f effs, Members fs effs)
+  Members '[] effs = ()
 
 -- ------------------------------------------------
 -- Utility functions
@@ -182,12 +246,39 @@ type AlgP f = forall x p q. f p q x -> x
 type AlgScoped s = forall x m p p' q' q x'. ScopeE s m p p' q' q x' x -> x
 type Gen a b = a -> b
 
+
 -- ------------------------------------------------
--- PrEff Monad and Simple Runners
+-- Simple Runners and important effects
 -- ------------------------------------------------
 
 run :: PrEff '[] IVoid p q a -> a
 run = foldP algIVoid algScopedIVoid (\_ -> undefined) genIVoid
+
+runIO :: PrEff '[Embed IO] IVoid p q a -> IO a
+runIO (Value a) = P.pure a
+runIO (Impure (OHere (Embed a)) k) = do
+  x <- a
+  runIO $ runIKleisli k x
+runIO (Impure (OThere _) _k) = error "Impossible"
+runIO (ImpureP _cmd _k) = error "Impossible"
+runIO (ScopedP _ _) = error "Impossible"
+
+embedIO :: (Member (Embed IO) f) => IO a -> PrEff f s p p a
+embedIO io = embed io
+
+data Embed m a where
+  Embed :: m a -> Embed m a
+
+embed :: (Member (Embed m) f) => m a -> PrEff f s p p a
+embed act = send (Embed act)
+
+type family Concat s tail where
+  Concat '[] t = t
+  Concat (x ': xs) t = x : Concat xs t
+
+-- ------------------------------------------------
+-- Standard runners and type definitions
+-- ------------------------------------------------
 
 -- Natural transformation
 type (~>) f g = forall x. f x -> g x
@@ -380,230 +471,9 @@ interpretScopedH alg salg (ScopedP op k) = Ix.do
   r <- salg (interpretScopedH alg salg) op
   interpretScopedH alg salg $ runIKleisli k r
 
-
--- runStateDirect ::
---   p ->
---   PrEff eff StateP p q a ->
---   PrEff eff IVoid () () (a, q)
--- runStateDirect p (Value x) = pure (x, p)
--- runStateDirect p (Impure cmd k) =
---   Impure cmd $
---     IKleisliTupled $ \x -> runStateDirect p $ runIKleisli k x
--- runStateDirect p (ImpureP GetP k) =
---   runStateDirect p (runIKleisli k p)
--- runStateDirect _ (ImpureP (PutP q) k) =
---   runStateDirect q (runIKleisli k ())
--- runStateDirect p (ScopedP (ModifyP f m) k) = Ix.do
---   (x, _q) <- runStateDirect (f p) m
---   runStateDirect p (runIKleisli k x)
-
-{- | Inject whole @'Union' r@ into a weaker @'Union' (any ': r)@ that has one
-more summand.
-
-/O(1)/
--}
-weaken :: Op xs a -> Op (x : xs) a
-weaken op = OThere op
-
--- data IIdentity p q a where
---  IIdentity :: a -> IIdentity p q a
-data IVoid p q a
-
-algIVoid :: AlgP IVoid
-algIVoid = \case
-
-algScopedIVoid :: AlgScoped IVoid
-algScopedIVoid = \case
-
-genIVoid :: Gen a a
-genIVoid x = x
-
-instance ScopedEffect IVoid where
-  weave ::
-    (Functor c) =>
-    c () ->
-    (forall r u v. c (m u v r) -> n u v (c r)) ->
-    ScopeE IVoid m p p' q' q x x' ->
-    ScopeE IVoid n p p' q' q (c x) (c x')
-  weave _ctx _nt s = absurdS s
-
-absurdS :: ScopeE IVoid m p p' q' q x x' -> a
-absurdS = \case
-
-data instance ScopeE IVoid m p p' q' q x' x
-
-runIO :: PrEff '[Embed IO] IVoid p q a -> IO a
-runIO (Value a) = P.pure a
-runIO (Impure (OHere (Embed a)) k) = do
-  x <- a
-  runIO $ runIKleisli k x
-runIO (Impure (OThere _) _k) = error "Impossible"
-runIO (ImpureP _cmd _k) = error "Impossible"
-runIO (ScopedP _ _) = error "Impossible"
-
-embedIO :: (Member (Embed IO) f) => IO a -> PrEff f s p p a
-embedIO io = embed io
-
-data Embed m a where
-  Embed :: m a -> Embed m a
-
-embed :: (Member (Embed m) f) => m a -> PrEff f s p p a
-embed act = send (Embed act)
-
 -- ------------------------------------------------
--- Effect System utilities
+-- Codensity experiments
 -- ------------------------------------------------
-
-data Nat = Z | S Nat
-
-type Lookup :: [a] -> Nat -> a
-type family Lookup a b where
-  Lookup '[] _ = TypeError (Text "Could not find index")
-  Lookup (_ ': xs) (S n) = Lookup xs n
-  Lookup (x ': _) Z = x
-
-type Replace :: [m] -> Nat -> m -> [m]
-type family Replace xs idx m where
-  Replace (x ': xs) Z m = m ': xs
-  Replace (x ': xs) (S s) m = x ': Replace xs s m
-
-type Append :: [a] -> a -> [a]
-type family Append xs x where
-  Append '[] t = t ': '[]
-  Append (x ': xs) t = x ': Append xs t
-
-type Length :: [a] -> Nat
-type family Length a where
-  Length '[] = Z
-  Length (x ': xs) = S (Length xs)
-
-type (≠) :: forall a. a -> a -> Bool
-type family (≠) a b where
-  a ≠ a = False
-  a ≠ b = True
-
-type RemoveLast :: [a] -> [a]
-type family RemoveLast xs where
-  RemoveLast '[] = TypeError (Text "Tried to remove last element from empty list")
-  RemoveLast (x ': '[]) = '[]
-  RemoveLast (x ': xs) = x : RemoveLast xs
-
-type a ≁ b = (a ≠ b) ~ True
-
--- type Operation a = a -> a -> Type -> Type
-
--- type Scope a = a -> a -> a -> a -> Type -> Type -> Type
-
-type Apply :: forall k a. k a -> a -> a
-type family Apply a b
-
-type Reverse :: forall k a. k a -> a -> a -> a
-type family Reverse a b c
-
--- type Map :: forall k a. k a -> [a] -> [a]
--- type family Map f a where
---   Map f '[] = '[]
---   Map f (x ': xs) = Apply f x ': Map f xs
-
-type MapReverse :: forall k a. k a -> [a] -> [a] -> [a]
-type family MapReverse f a b where
-  MapReverse f '[] _ = '[]
-  MapReverse f (x ': xs) (y ': ys) = Reverse f x y ': MapReverse f xs ys
-
-type Take :: [a] -> Nat -> [a]
-type family Take xs n where
-  Take _ Z = '[]
-  Take (x ': xs) (S n) = x ': Take xs n
-
-data AccessLevel = N | R | X
-
--- data Container = Contains AccessLevel
-type Acceptable :: AccessLevel -> AccessLevel -> AccessLevel -> Constraint
-class Acceptable a b c | a b -> c, a c -> b
-
-instance Acceptable X X N
-
-instance Acceptable X N X
-
-instance Acceptable X R R
-
-instance Acceptable R R R
-
-instance Acceptable N N N
-
-type AcceptableList :: [AccessLevel] -> [AccessLevel] -> [AccessLevel] -> Constraint
-class AcceptableList as bs cs
-
-instance AcceptableList '[] '[] '[]
-
-instance (Acceptable a b c, AcceptableList as bs cs) => AcceptableList (a ': as) (b ': bs) (c ': cs)
-
-type Msg = Text "You could be writing to a resource, you have no access to."
-
-type (≤) :: AccessLevel -> AccessLevel -> Constraint
-class a ≤ b
-
-instance a ≤ X
-
-instance R ≤ R
-
-instance N ≤ R
-
-instance N ≤ N
-
-instance (TypeError Msg) => X ≤ N
-
-type Max :: AccessLevel -> AccessLevel -> AccessLevel
-type family Max a b where
-  Max X _ = X
-  Max _ X = X
-  Max R _ = R
-  Max _ R = R
-  Max _ _ = N
-
-type family FindEff e effs :: Natural where
-  FindEff e '[] = TypeError (Text "Not found")
-  FindEff e (e ': eff) = 0
-  FindEff e (e' ': eff) = 1 + FindEff e eff
-
-type family Write ind p ps where
-  Write _ _ '[] = TypeError (Text "This sucks")
-  Write 0 p (x : xs) = p : xs
-  Write n p (x : xs) = x : Write (n - 1) p xs
-
-type family Assume ind ps where
-  Assume _ '[] = TypeError (Text "This sucks")
-  Assume 0 (x : xs) = x
-  Assume n (x : xs) = Assume (n - 1) xs
-
-type family Concat s tail where
-  Concat '[] t = t
-  Concat (x ': xs) t = x : Concat xs t
-
-class Member eff f where
-  inj :: eff a -> Op f a
-
-instance {-# OVERLAPPING #-} Member e (e ': effs) where
-  inj :: f a -> Op (f : effs) a
-  inj e = OHere e
-
-instance Member eff f => Member eff (e ': f) where
-  inj = OThere . inj
-
-instance
-  ( TypeError
-      ( Text "Failed to resolve effect "
-          :<>: ShowType e
-          :$$: Text "Perhaps check the type of effectful computation and the sequence of handlers for concordance?"
-      )
-  ) =>
-  Member e '[]
-  where
-  inj = error "The instance of Member e '[] must never be selected"
-
-type family Members fs effs where
-  Members (f ': fs) effs = (Member f effs, Members fs effs)
-  Members '[] effs = ()
 
 type Eff f s p q x = ICodensity (PrEff f s) p q x
 

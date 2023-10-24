@@ -51,7 +51,7 @@ runState' s = \case
   ScopedP op k ->
     ScopedP
       ( weave
-          (s, ())
+          (s, ()) -- :: ctx () ~ (s, ())
           ( \(s', inner) -> Ix.do
               (x, newS) <- runState' s' inner
               pure (x, newS)
