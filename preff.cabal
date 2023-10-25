@@ -1,7 +1,8 @@
 cabal-version:   3.0
 name:            preff
 version:         0.1.0.0
-license:
+license:         BSD-3-Clause
+license-file:    LICENSE
 author:          Fendor
 maintainer:      power.walross@gmail.com
 build-type:      Simple
