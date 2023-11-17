@@ -6,41 +6,10 @@
 module PrEff.Parameterised.State where
 
 import qualified Control.IxMonad as Ix
-import Data.Kind
 import PrEff (interpretStatefulScoped)
 import PrEff hiding (interpretStatefulScoped)
 import Prelude hiding (Monad (..))
 
-data StateF p q x where
-  Alloc :: t -> StateF p (Append p X) (Token t (Length p))
-  Get ::
-    (R ≤ Lookup p n) =>
-    Token t n ->
-    StateF p p t
-  Put ::
-    (X ≤ Lookup p n) =>
-    Token t n ->
-    t ->
-    StateF p p ()
-
-data instance ScopeE StateF m p p' q' q x x' where
-  Fork :: (AcceptableList p1 q1 p2) => m p2 q2 a -> ScopeE StateF m p1 p2 q2 q1 a (Future a)
-  Finish :: m p2 q2 a -> ScopeE StateF m p p q p a a
-
-type Token :: Type -> PrEff.Nat -> Type
-newtype Token t n = Token ()
-
-data Future a = Future
-
-put a b = Impure (OHere $ Put a b) emptyCont
-
-alloc a = Impure (OHere $ Alloc a) emptyCont
-
-get a = Impure (OHere $ Get a) emptyCont
-
-fork s = ScopedP (Fork s) emptyCont
-
-finish s = ScopedP (Finish s) emptyCont
 
 data StateP p q a where
   PutP :: x -> StateP p x ()

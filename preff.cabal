@@ -54,7 +54,6 @@ library
     PrEff
     PrEff.Codensity.Reader
     PrEff.Codensity.State
-    PrEff.Parameterised.Array
     PrEff.Parameterised.NonDet
     PrEff.Parameterised.Reader
     PrEff.Parameterised.Session
@@ -63,19 +62,18 @@ library
     PrEff.Simple.Reader
     PrEff.Simple.State
     PrEff.Simple.Writer
-    SerialArrays
 
   build-depends:
-    , array
-    , base                  >=4.14.3.0
-    , containers
-    , first-class-families
+    , array                 >=0.5.5    && <0.6
+    , base                  >=4.14.3.0 && <5
+    , containers            >=0.6.7    && <0.7
     , ghc-prim
-    , random
-    , singletons
-    , singletons-base
-    , stm
-    , text
+    , first-class-families  >=0.8.0    && <0.9
+    , random                >=1.2.1    && <1.3
+    , singletons            >=3.0.2    && <3.1
+    , singletons-base       >=3.0      && <3.3
+    , stm                   >=2.5.1    && <2.6
+    , text                  >=2.0.2    && <2.3
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -92,37 +90,39 @@ library examples
   build-depends:
     , base
     , containers
-    , directory
-    , filepath
+    , directory       >=1.3.8   && <1.4
+    , filepath        >=1.4.100 && <1.5
+    , free            >=5.2     && <5.3
+    , kan-extensions  >=5.2.5   && <5.3
     , preff
+    , profunctors     >=5.6.2   && <5.7
+    , stm
     , text
 
   default-language: Haskell2010
 
 library experiments
   import:           exts
-  exposed-modules:
-    Free.Experiment
-
+  exposed-modules:  Free.Experiment
   hs-source-dirs:   examples/
   build-depends:
     , base
     , containers
     , directory
     , filepath
-    , preff
-    , text
-    , kan-extensions
-    , profunctors
     , free
+    , kan-extensions
+    , preff
+    , profunctors
+    , text
 
   default-language: Haskell2010
 
 benchmark free-encodings
-  import:         exts
-  type:           exitcode-stdio-1.0
-  main-is:        Main.hs
-  hs-source-dirs: bench
+  import:           exts
+  type:             exitcode-stdio-1.0
+  main-is:          Main.hs
+  hs-source-dirs:   bench
   build-depends:
     , base
     , criterion
