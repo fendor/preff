@@ -13,6 +13,18 @@ data O a b
 data SL a
 data CL a
 
+type family Dual' proc
+type instance Dual' (R a) = S a
+type instance Dual' (S a) = R a
+type instance Dual' (O a b) = C (Dual a) (Dual b)
+type instance Dual' (C a b) = O (Dual a) (Dual b)
+type instance Dual' (CL a) = SL (Dual a)
+type instance Dual' (SL a) = CL (Dual a)
+
+type family Dual proc where
+  Dual '[] = '[]
+  Dual (x : xs) = Dual' x : Dual xs
+
 type Session ::
   forall k.
   [k] ->
@@ -43,18 +55,6 @@ data instance ScopeE Session m p p' q' q x' x where
   ClientLoop ::
     m a End x ->
     ScopeE Session m (CL a : r) a End r x [x]
-
-type family Dual' proc
-type instance Dual' (R a) = S a
-type instance Dual' (S a) = R a
-type instance Dual' (O a b) = C (Dual a) (Dual b)
-type instance Dual' (C a b) = O (Dual a) (Dual b)
-type instance Dual' (CL a) = SL (Dual a)
-type instance Dual' (SL a) = CL (Dual a)
-
-type family Dual proc where
-  Dual '[] = '[]
-  Dual (x : xs) = Dual' x : Dual xs
 
 send ::
   forall a f p.
@@ -93,49 +93,46 @@ loopC ::
   PrEff f Session (CL a : p) p [x]
 loopC act = sendScoped (ClientLoop act)
 
-connect ::
-  (Dual p1 ~ p2, Dual p2 ~ p1) =>
-  PrEff f Session p1 '[] a ->
-  PrEff f Session p2 '[] b ->
+connect :: (Dual p1 ~ p2, Dual p2 ~ p1) =>
+  PrEff f Session p1 '[] a -> PrEff f Session p2 '[] b ->
   PrEff f IVoid () () (a, b)
-connect (Value x) (Value y) =
-  pure (x, y)
+connect (Value x) (Value y) = pure (x, y)
 connect (ImpureP (Recv) k1) (ImpureP ((Send a)) k2) =
   connect (runIKleisli k1 a) (runIKleisli k2 ())
 connect (ImpureP ((Send a)) k1) (ImpureP (Recv) k2) =
   connect (runIKleisli k1 ()) (runIKleisli k2 a)
-connect (ScopedP (Sel1 act1) k1) (ScopedP (Offer act2 _) k2) = Ix.do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Sel2 act1) k1) (ScopedP (Offer _ act2) k2) = Ix.do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer act1 _) k1) (ScopedP (Sel1 act2) k2) = Ix.do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (Offer _ act1) k1) (ScopedP (Sel2 act2) k2) = Ix.do
-  (a, b) <- connect act1 act2
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
-connect (ScopedP (ServerLoop act1) k1) (ScopedP (ClientLoop act2) k2) = Ix.do
-  (a, b) <- go ([], [])
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
- where
-  go (r1, r2) = Ix.do
+connect (ScopedP op1 k1) (ScopedP op2 k2) = case (op1, op2) of
+  (Sel1 act1, Offer act2 _) -> Ix.do
     (a, b) <- connect act1 act2
-    case a of
-      Nothing -> pure (r1, b : r2)
-      Just a' -> go (a' : r1, b : r2)
-connect (ScopedP (ClientLoop act1) k1) (ScopedP (ServerLoop act2) k2) = Ix.do
-  (a, b) <- go ([], [])
-  connect (runIKleisli k1 a) (runIKleisli k2 b)
- where
-  go (r1, r2) = Ix.do
+    connect (runIKleisli k1 a) (runIKleisli k2 b)
+  (Sel2 act1, Offer _ act2) -> Ix.do
     (a, b) <- connect act1 act2
-    case b of
-      Nothing -> pure (a : r1, r2)
-      Just b' -> go (a : r1, b' : r2)
-connect (Impure cmd k1) k2 = Impure cmd $ iKleisli $ \x -> connect (runIKleisli k1 x) k2
-connect k1 (Impure cmd k2) = Impure cmd $ iKleisli $ \x -> connect k1 (runIKleisli k2 x)
+    connect (runIKleisli k1 a) (runIKleisli k2 b)
+  (Offer act1 _, Sel1 act2) -> Ix.do
+    (a, b) <- connect act1 act2
+    connect (runIKleisli k1 a) (runIKleisli k2 b)
+  (Offer _ act1, Sel2 act2) -> Ix.do
+    (a, b) <- connect act1 act2
+    connect (runIKleisli k1 a) (runIKleisli k2 b)
+  (ServerLoop act1, ClientLoop act2) -> Ix.do
+    (a, b) <- connectLoop act1 act2
+    connect (runIKleisli k1 a) (runIKleisli k2 b)
+  (ClientLoop act1, ServerLoop act2) -> Ix.do
+    (a, b) <- connectLoop act2 act1
+    connect (runIKleisli k1 b) (runIKleisli k2 a)
+  (_, _) -> error "Protocol.connect.ScopedP: internal tree error"
+ where
+  connectLoop bodyA bodyB = go ([], [])
+   where
+    go (r1, r2) = Ix.do
+      (a, b) <- connect bodyA bodyB
+      case a of
+        Nothing -> pure (r1, b : r2)
+        Just a' -> go (a' : r1, b : r2)
+connect (Impure cmd k1) k2 = Impure cmd $ iKleisli
+  $ \x -> connect (runIKleisli k1 x) k2
+connect k1 (Impure cmd k2) = Impure cmd $ iKleisli
+  $ \x -> connect k1 (runIKleisli k2 x)
 connect _ _ = error "Protocol.connect: internal tree error"
 
 -- ----------------------------------------------------------------------
