@@ -133,7 +133,7 @@ connect (Impure cmd k1) k2 = Impure cmd $ iKleisli
   $ \x -> connect (runIKleisli k1 x) k2
 connect k1 (Impure cmd k2) = Impure cmd $ iKleisli
   $ \x -> connect k1 (runIKleisli k2 x)
-connect _ _ = error "Protocol.connect: internal tree error"Ü
+connect _ _ = error "Protocol.connect: internal tree error"
 
 -- ----------------------------------------------------------------------
 -- Experimental API
