@@ -101,16 +101,6 @@ processCustomers inp out = Ix.do
   newCustomers <- process customers
   writeStore out newCustomers
 
-processCustomers ::
-  (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
-  Proxy inp ->
-  Proxy out ->
-  PrEff f CustomerStore (Store inp) (Store out) ()
-processCustomers inp out = Ix.do
-  customers <- readStore inp
-  newCustomers <- process customers
-  writeStore out newCustomers
-
 invocationExample ::
   (Members [Writer [String], CustomerService] f) =>
   PrEff f CustomerStore p p ()
