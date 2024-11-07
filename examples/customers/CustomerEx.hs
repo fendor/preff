@@ -1,5 +1,6 @@
 {-# LANGUAGE EmptyDataDecls #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# LANGUAGE BlockArguments #-}
 
 module CustomerEx where
 
@@ -29,7 +30,7 @@ runCustomerDbIO ::
   (Member (Embed IO) f, ScopedEffect s) =>
   PrEff (CustomerDb : f) s p q x ->
   PrEff f s p q x
-runCustomerDbIO = interpret $ \case
+runCustomerDbIO = interpret \case
   ReadCustomers fp ->
     embed $ readCustomersIO fp
   WriteCustomers fp customers ->
@@ -39,14 +40,13 @@ runCustomerDbViaState ::
   (Member (State (Map FilePath [Customer])) f, ScopedEffect s) =>
   PrEff (CustomerDb : f) s p q x ->
   PrEff f s p q x
-runCustomerDbViaState = interpret $ \case
+runCustomerDbViaState = interpret \case
   ReadCustomers fp -> do
     customerMap <- get
     pure (customerMap ! fp)
   WriteCustomers fp customers -> do
     customerMap <- get
     put (insert fp customers customerMap)
-    pure ()
 
 processCustomers ::
   (Members '[CustomerService, CustomerDb] f) =>
@@ -54,6 +54,7 @@ processCustomers ::
   FilePath ->
   PrEff f s p p ()
 processCustomers inp out = do
+  -- precondition: 'inp' exists
   customers <- readCustomers inp
   newCustomers <- process customers
   writeCustomers out newCustomers

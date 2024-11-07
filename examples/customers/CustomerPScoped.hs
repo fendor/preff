@@ -33,7 +33,11 @@ readStore p = sendP (ReadStore p)
 writeStore :: (KnownSymbol out) => proxy out -> [Customer] -> PrEff eff CustomerStore p (Store out) ()
 writeStore p c = sendP (WriteStore p c)
 
-withStore :: (KnownSymbol inp) => proxy inp -> PrEff eff CustomerStore (Store inp) (Store out) () -> PrEff eff CustomerStore p p ()
+withStore ::
+  (KnownSymbol inp) =>
+  proxy inp ->
+  PrEff eff CustomerStore (Store inp) (Store out) () ->
+  PrEff eff CustomerStore p p ()
 withStore i m = sendScoped (WithStore i m)
 
 runCustomerStoreIO ::
@@ -82,10 +86,20 @@ runCustomerStoreViaState =
           s <- get @(Map FilePath [Customer])
           case Map.lookup fp s of
             Nothing ->
-                pure ()
+              pure ()
             Just _ -> do
               runner m
     )
+
+processCustomers ::
+  (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
+  Proxy inp ->
+  Proxy out ->
+  PrEff f CustomerStore (Store inp) (Store out) ()
+processCustomers inp out = Ix.do
+  customers <- readStore inp
+  newCustomers <- process customers
+  writeStore out newCustomers
 
 processCustomers ::
   (Member CustomerService f, KnownSymbol inp, KnownSymbol out) =>
@@ -102,7 +116,9 @@ invocationExample ::
   PrEff f CustomerStore p p ()
 invocationExample = do
   withStore (Proxy @"input.txt") $ Ix.do
-    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
+    processCustomers
+      (Proxy @"input.txt")
+      (Proxy @"output.txt")
 
 scopedProcessCustomers ::
   (Members [Writer [String], CustomerService] f) =>
@@ -111,7 +127,9 @@ scopedProcessCustomers = Ix.do
   tell ["Hello, World!"]
   withStore (Proxy @"input.txt") $ Ix.do
     tell ["Start the processing!"]
-    processCustomers (Proxy @"input.txt") (Proxy @"output.txt")
+    processCustomers
+      (Proxy @"input.txt")
+      (Proxy @"output.txt")
   tell ["Stop execution"]
 
 -- >>> :t runIO . runWriter @[String] . runCustomerService $ runCustomerStoreIO scopedProcessCustomers

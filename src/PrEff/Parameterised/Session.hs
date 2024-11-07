@@ -133,19 +133,19 @@ connect (Impure cmd k1) k2 = Impure cmd $ iKleisli
   $ \x -> connect (runIKleisli k1 x) k2
 connect k1 (Impure cmd k2) = Impure cmd $ iKleisli
   $ \x -> connect k1 (runIKleisli k2 x)
-connect _ _ = error "Protocol.connect: internal tree error"
+connect _ _ = error "Protocol.connect: internal tree error"Ü
 
 -- ----------------------------------------------------------------------
 -- Experimental API
 -- ----------------------------------------------------------------------
 
-simpleServer :: SPrEff f '[S String, R String] String
+simpleServer :: SPrEff f [S String, R String] String
 simpleServer = Ix.do
   send "Ping"
   s <- recv @String
   pure s
 
-simpleServerTwice :: SPrEff f '[S String, R String, S String, R String] String
+simpleServerTwice :: SPrEff f [S String, R String, S String, R String] String
 simpleServerTwice = Ix.do
   simpleServer
   simpleServer

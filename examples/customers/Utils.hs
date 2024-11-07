@@ -4,9 +4,6 @@ import System.Directory
 
 type Customer = ()
 
-processData :: [Customer] -> [Customer]
-processData = id
-
 customersExistIO :: FilePath -> IO Bool
 customersExistIO = doesFileExist
 
@@ -29,3 +26,6 @@ runCustomerService ::
 runCustomerService = interpret $ \case
   Process customers ->
     pure $ processData customers
+
+processData :: [Customer] -> [Customer]
+processData = id
